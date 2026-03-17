@@ -10,16 +10,25 @@ Related projects:
 - `agent1c.ai` (cloud-hosted Agent1c OS)
 - `agent1c.me` (local-first / BYOK Agent1c OS)
 
+## Building
+
+Build instructions are environment-specific in this repo.
+
+See `BUILDING.md` before running Gradle, especially if you are building either:
+- on Ubuntu/x86_64
+- inside Debian proot on Android/Termux
+
 ## Download APK (Current)
 
-Release `0.0.5`:
-- Direct APK download: https://github.com/Decentricity/agent1c_android/raw/refs/tags/v0.0.5/releases/0.0.5/agent1c-hitomi-android-v0.0.5-debug.apk
-- `releases/0.0.5/agent1c-hitomi-android-v0.0.5-debug.apk`
-- checksum: `releases/0.0.5/SHA256SUMS.txt`
-- notes: `releases/0.0.5/RELEASE_NOTES.md`
+Release `0.1.0`:
+- Direct APK download: https://raw.githubusercontent.com/Decentricity/hitomi-android/master/releases/0.1.0/hitomi-v0.1.0-debug.apk
+- `releases/0.1.0/hitomi-v0.1.0-debug.apk`
+- checksum: `releases/0.1.0/SHA256SUMS_APK.txt`
 
-## What 0.0.5 includes
+## What 0.1.0 includes
 
+- Purple Solana wallet window with local wallet save flow
+- Read-only Solana wallet overview / refresh tools
 - Floating Hitomi hedgehog overlay (draggable)
 - Clippy-style chat bubble with tail
 - Supabase login (web-first handoff to app)

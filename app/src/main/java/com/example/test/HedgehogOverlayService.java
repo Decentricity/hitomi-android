@@ -9,6 +9,7 @@ import android.app.Service;
 import android.content.Context;
 import android.content.Intent;
 import android.content.pm.PackageManager;
+import android.content.res.Configuration;
 import android.graphics.Canvas;
 import android.graphics.Paint;
 import android.graphics.PixelFormat;
@@ -16,6 +17,7 @@ import android.graphics.Rect;
 import android.graphics.drawable.BitmapDrawable;
 import android.graphics.drawable.Drawable;
 import android.graphics.drawable.GradientDrawable;
+import android.graphics.drawable.InsetDrawable;
 import android.os.Build;
 import android.os.Handler;
 import android.os.IBinder;
@@ -34,6 +36,7 @@ import android.speech.RecognitionListener;
 import android.speech.RecognizerIntent;
 import android.speech.SpeechRecognizer;
 import android.os.Bundle;
+import android.util.Log;
 import android.widget.EditText;
 import android.widget.ImageButton;
 import android.widget.ImageView;
@@ -56,6 +59,7 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 
 public class HedgehogOverlayService extends Service {
+    private static final String TAG = "HitomiOverlay";
     public static final String ACTION_START = "ai.agent1c.hitomi.START_OVERLAY";
     public static final String ACTION_STOP = "ai.agent1c.hitomi.STOP_OVERLAY";
     private static final String CHANNEL_ID = "hitomi_overlay_channel";
@@ -68,7 +72,10 @@ public class HedgehogOverlayService extends Service {
     private static final int BUBBLE_GAP_DP = 8;
     private static final int EDGE_TAB_WIDTH_DP = 56;
     private static final int EDGE_TAB_HEIGHT_DP = 112;
+    private static final int EDGE_TAB_TOUCH_WIDTH_DP = 96;
+    private static final int EDGE_TAB_TOUCH_HEIGHT_DP = 148;
     private static final int EDGE_TAB_VISIBLE_SLICE_DP = 10;
+    private static final int EDGE_TAB_RESTORE_SWIPE_DP = 18;
     private static final String ANDROID_BROWSER_TOOL_NAME = "android_browser_open";
     private static final String ANDROID_BROWSER_BROWSE_TOOL_NAME = "android_browser_browse";
     private static final String ANDROID_TERMUX_EXEC_TOOL_NAME = "android_termux_exec";
@@ -130,6 +137,8 @@ public class HedgehogOverlayService extends Service {
     private boolean sttPendingRestartAfterReply = false;
     private boolean sttSuppressUntilNextSession = false;
     private String sttPartialPreview = "";
+    private long lastSttIssueToastAt = 0L;
+    private String lastSttIssueKey = "";
     private boolean hedgehogHiddenAtEdge = false;
     private boolean hiddenEdgeRight = false;
     private int hiddenRestoreX = -1;
@@ -170,6 +179,12 @@ public class HedgehogOverlayService extends Service {
         ensureOverlay();
         overlayRunning = true;
         return START_STICKY;
+    }
+
+    @Override
+    public void onConfigurationChanged(Configuration newConfig) {
+        super.onConfigurationChanged(newConfig);
+        mainHandler.post(this::refreshOverlayPositionsForViewportChange);
     }
 
     @Override
@@ -274,8 +289,8 @@ public class HedgehogOverlayService extends Service {
         solanaParams.x = dp(132);
         solanaParams.y = dp(132);
         edgeTabParams = new WindowManager.LayoutParams(
-            dp(EDGE_TAB_WIDTH_DP),
-            dp(EDGE_TAB_HEIGHT_DP),
+            dp(EDGE_TAB_TOUCH_WIDTH_DP),
+            dp(EDGE_TAB_TOUCH_HEIGHT_DP),
             overlayType,
             WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS | WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE,
             PixelFormat.TRANSLUCENT
@@ -331,6 +346,34 @@ public class HedgehogOverlayService extends Service {
             transcript = "Hitomi: Hi! I'm Hitomi, your tiny hedgehog friend. Sign in in the app, then we can chat here.";
         }
         renderTranscript(false);
+    }
+
+    private void refreshOverlayPositionsForViewportChange() {
+        if (windowManager == null) return;
+        if (hedgehogHiddenAtEdge) {
+            positionEdgeTabForHiddenState();
+            if (edgeTabView != null) {
+                edgeTabView.setVisibility(View.VISIBLE);
+                safeUpdate(edgeTabView, edgeTabParams);
+            }
+            return;
+        }
+        if (hedgehogParams != null && hedgehogView != null) {
+            hedgehogParams.x = clamp(hedgehogParams.x, 0, Math.max(0, getScreenWidth() - dp(HEDGEHOG_TOUCH_BOX_DP)));
+            hedgehogParams.y = clamp(hedgehogParams.y, 0, Math.max(0, getScreenHeight() - dp(HEDGEHOG_TOUCH_BOX_DP)));
+            safeUpdate(hedgehogView, hedgehogParams);
+        }
+        if (bubbleVisible && bubbleParams != null && bubbleView != null) {
+            positionBubbleNearHedgehog();
+            safeUpdate(bubbleView, bubbleParams);
+        }
+        if (browserVisible && browserParams != null && browserView != null) {
+            int browserW = (browserView.getWidth() > 0) ? browserView.getWidth() : dp(240);
+            int browserH = (browserView.getHeight() > 0) ? browserView.getHeight() : dp(190);
+            browserParams.x = clamp(browserParams.x, 0, Math.max(0, getScreenWidth() - browserW));
+            browserParams.y = clamp(browserParams.y, 0, Math.max(0, getScreenHeight() - browserH));
+            safeUpdate(browserView, browserParams);
+        }
     }
 
     private void setupBrowserUi() {
@@ -767,16 +810,58 @@ public class HedgehogOverlayService extends Service {
         TextView v = new TextView(this);
         v.setText("");
         v.setGravity(Gravity.CENTER);
-        GradientDrawable bg = new GradientDrawable();
-        bg.setShape(GradientDrawable.OVAL);
-        bg.setColor(0xEEF4EFCB);
-        bg.setStroke(dp(1), 0x887A775D);
-        v.setBackground(bg);
+        v.setBackground(buildEdgeTabBackground(false));
         v.setClickable(true);
         v.setFocusable(false);
         v.setAlpha(0.95f);
         v.setOnClickListener(x -> restoreHedgehogFromEdge());
+        final float[] downRaw = new float[2];
+        final boolean[] restored = new boolean[1];
+        v.setOnTouchListener((view, event) -> {
+            if (!hedgehogHiddenAtEdge) return false;
+            switch (event.getActionMasked()) {
+                case MotionEvent.ACTION_DOWN:
+                    downRaw[0] = event.getRawX();
+                    downRaw[1] = event.getRawY();
+                    restored[0] = false;
+                    return true;
+                case MotionEvent.ACTION_MOVE:
+                    float dx = event.getRawX() - downRaw[0];
+                    float dy = Math.abs(event.getRawY() - downRaw[1]);
+                    boolean inwardSwipe = hiddenEdgeRight
+                        ? (dx <= -dp(EDGE_TAB_RESTORE_SWIPE_DP))
+                        : (dx >= dp(EDGE_TAB_RESTORE_SWIPE_DP));
+                    if (!restored[0] && inwardSwipe && dy <= dp(40)) {
+                        restored[0] = true;
+                        restoreHedgehogFromEdge();
+                    }
+                    return true;
+                case MotionEvent.ACTION_UP:
+                    if (!restored[0]) {
+                        view.performClick();
+                    }
+                    return true;
+                case MotionEvent.ACTION_CANCEL:
+                    restored[0] = false;
+                    return true;
+                default:
+                    return false;
+            }
+        });
         return v;
+    }
+
+    private Drawable buildEdgeTabBackground(boolean alignRight) {
+        GradientDrawable oval = new GradientDrawable();
+        oval.setShape(GradientDrawable.OVAL);
+        oval.setColor(0xEEF4EFCB);
+        oval.setStroke(dp(1), 0x887A775D);
+        int horizontalInset = Math.max(0, dp(EDGE_TAB_TOUCH_WIDTH_DP - EDGE_TAB_WIDTH_DP));
+        int verticalInset = Math.max(0, (dp(EDGE_TAB_TOUCH_HEIGHT_DP) - dp(EDGE_TAB_HEIGHT_DP)) / 2);
+        if (alignRight) {
+            return new InsetDrawable(oval, horizontalInset, verticalInset, 0, verticalInset);
+        }
+        return new InsetDrawable(oval, 0, verticalInset, horizontalInset, verticalInset);
     }
 
     private void setupBubbleUi() {
@@ -897,6 +982,7 @@ public class HedgehogOverlayService extends Service {
                 Toast.makeText(this, "Allow microphone permission in Hitomi app first.", Toast.LENGTH_SHORT).show();
                 return;
             }
+            if (speechRecognizer == null) initSpeechRecognizer();
             if (!sttRecognizerAvailable) {
                 Toast.makeText(this, "Speech recognition is unavailable on this device.", Toast.LENGTH_SHORT).show();
                 return;
@@ -920,8 +1006,10 @@ public class HedgehogOverlayService extends Service {
         if (granted) return true;
         Intent open = new Intent(this, MainActivity.class);
         open.putExtra(MainActivity.EXTRA_REQUEST_MIC_PERMISSION, true);
+        open.putExtra(MainActivity.EXTRA_FORCE_SHOW_MAIN, true);
         open.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_SINGLE_TOP | Intent.FLAG_ACTIVITY_CLEAR_TOP);
         startActivity(open);
+        noteSttIssue("mic_permission_request", "Opening Hitomi settings so Android can ask for mic permission.");
         return false;
     }
 
@@ -929,8 +1017,12 @@ public class HedgehogOverlayService extends Service {
         if (speechRecognizer != null) return;
         try {
             sttRecognizerAvailable = SpeechRecognizer.isRecognitionAvailable(this);
-            if (!sttRecognizerAvailable) return;
+            if (!sttRecognizerAvailable) {
+                Log.w(TAG, "SpeechRecognizer.isRecognitionAvailable returned false");
+                return;
+            }
             speechRecognizer = SpeechRecognizer.createSpeechRecognizer(this);
+            Log.d(TAG, "Speech recognizer created");
             speechIntent = new Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH);
             speechIntent.putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM);
             speechIntent.putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, true);
@@ -938,6 +1030,7 @@ public class HedgehogOverlayService extends Service {
             speechIntent.putExtra(RecognizerIntent.EXTRA_PREFER_OFFLINE, false);
             speechRecognizer.setRecognitionListener(new RecognitionListener() {
                 @Override public void onReadyForSpeech(Bundle params) {
+                    Log.d(TAG, "STT onReadyForSpeech");
                     sttListening = true;
                     sttPartialPreview = "";
                     renderTranscript(chatInFlight);
@@ -946,14 +1039,23 @@ public class HedgehogOverlayService extends Service {
                 @Override public void onRmsChanged(float rmsdB) {}
                 @Override public void onBufferReceived(byte[] buffer) {}
                 @Override public void onEndOfSpeech() {
+                    Log.d(TAG, "STT onEndOfSpeech");
                     sttListening = false;
                 }
                 @Override public void onError(int error) {
+                    Log.w(TAG, "STT onError " + speechErrorName(error) + " (" + error + ")");
                     sttListening = false;
                     sttPartialPreview = "";
                     renderTranscript(chatInFlight);
                     if (!alwaysListeningEnabled) return;
+                    if (error == SpeechRecognizer.ERROR_INSUFFICIENT_PERMISSIONS) {
+                        alwaysListeningEnabled = false;
+                        updateQuickMicVisual();
+                        noteSttIssue("mic_permission", "Microphone permission was lost. Re-enable it in the app.");
+                        return;
+                    }
                     if (error == SpeechRecognizer.ERROR_RECOGNIZER_BUSY) {
+                        recreateSpeechRecognizer();
                         scheduleSpeechRestart(420);
                         return;
                     }
@@ -961,9 +1063,17 @@ public class HedgehogOverlayService extends Service {
                         scheduleSpeechRestart(180);
                         return;
                     }
+                    if (error == SpeechRecognizer.ERROR_CLIENT
+                        || error == SpeechRecognizer.ERROR_SERVER
+                        || error == SpeechRecognizer.ERROR_NETWORK
+                        || error == SpeechRecognizer.ERROR_NETWORK_TIMEOUT) {
+                        recreateSpeechRecognizer();
+                        noteSttIssue("mic_retry", "Mic had a hiccup. Retrying...");
+                    }
                     scheduleSpeechRestart(500);
                 }
                 @Override public void onResults(Bundle results) {
+                    Log.d(TAG, "STT onResults");
                     sttListening = false;
                     sttPartialPreview = "";
                     handleSpeechResults(results, true);
@@ -979,9 +1089,11 @@ public class HedgehogOverlayService extends Service {
                 }
                 @Override public void onEvent(int eventType, Bundle params) {}
             });
-        } catch (Exception ignored) {
+        } catch (Exception e) {
+            Log.e(TAG, "Failed to initialize speech recognizer", e);
             sttRecognizerAvailable = false;
             speechRecognizer = null;
+            noteSttIssue("mic_init_failed", "Speech recognition failed to initialize.");
         }
     }
 
@@ -1021,7 +1133,13 @@ public class HedgehogOverlayService extends Service {
         if (!ensureMicPermission()) return;
         if (!sttRecognizerAvailable || speechRecognizer == null || speechIntent == null) {
             if (speechRecognizer == null) initSpeechRecognizer();
-            if (!sttRecognizerAvailable || speechRecognizer == null || speechIntent == null) return;
+            if (!sttRecognizerAvailable || speechRecognizer == null || speechIntent == null) {
+                Log.w(TAG, "STT start skipped: recognizer unavailable");
+                alwaysListeningEnabled = false;
+                updateQuickMicVisual();
+                noteSttIssue("mic_unavailable", "Speech recognition is unavailable right now.");
+                return;
+            }
         }
         if (sttListening) return;
         if (sttSuppressUntilNextSession) {
@@ -1029,10 +1147,16 @@ public class HedgehogOverlayService extends Service {
         }
         try {
             speechRecognizer.cancel();
-        } catch (Exception ignored) {}
+        } catch (Exception e) {
+            Log.w(TAG, "speechRecognizer.cancel failed before restart", e);
+        }
         try {
+            Log.d(TAG, "Calling speechRecognizer.startListening");
             speechRecognizer.startListening(speechIntent);
-        } catch (Exception ignored) {
+        } catch (Exception e) {
+            Log.e(TAG, "speechRecognizer.startListening failed", e);
+            recreateSpeechRecognizer();
+            noteSttIssue("mic_start_failed", "Mic did not start. Retrying...");
             scheduleSpeechRestart(500);
         }
     }
@@ -1059,6 +1183,44 @@ public class HedgehogOverlayService extends Service {
             speechRecognizer = null;
         }
         renderTranscript(chatInFlight);
+    }
+
+    private void recreateSpeechRecognizer() {
+        try {
+            if (speechRecognizer != null) speechRecognizer.destroy();
+        } catch (Exception e) {
+            Log.w(TAG, "speechRecognizer.destroy failed", e);
+        }
+        speechRecognizer = null;
+        speechIntent = null;
+        sttListening = false;
+        initSpeechRecognizer();
+    }
+
+    private void noteSttIssue(String key, String message) {
+        if (message == null || message.trim().isEmpty()) return;
+        Log.w(TAG, "STT issue: " + key + " - " + message);
+        long now = System.currentTimeMillis();
+        boolean sameKey = key != null && key.equals(lastSttIssueKey);
+        if (sameKey && (now - lastSttIssueToastAt) < 4000L) return;
+        lastSttIssueKey = key == null ? "" : key;
+        lastSttIssueToastAt = now;
+        mainHandler.post(() -> Toast.makeText(this, message, Toast.LENGTH_SHORT).show());
+    }
+
+    private static String speechErrorName(int error) {
+        switch (error) {
+            case SpeechRecognizer.ERROR_AUDIO: return "ERROR_AUDIO";
+            case SpeechRecognizer.ERROR_CLIENT: return "ERROR_CLIENT";
+            case SpeechRecognizer.ERROR_INSUFFICIENT_PERMISSIONS: return "ERROR_INSUFFICIENT_PERMISSIONS";
+            case SpeechRecognizer.ERROR_NETWORK: return "ERROR_NETWORK";
+            case SpeechRecognizer.ERROR_NETWORK_TIMEOUT: return "ERROR_NETWORK_TIMEOUT";
+            case SpeechRecognizer.ERROR_NO_MATCH: return "ERROR_NO_MATCH";
+            case SpeechRecognizer.ERROR_RECOGNIZER_BUSY: return "ERROR_RECOGNIZER_BUSY";
+            case SpeechRecognizer.ERROR_SERVER: return "ERROR_SERVER";
+            case SpeechRecognizer.ERROR_SPEECH_TIMEOUT: return "ERROR_SPEECH_TIMEOUT";
+            default: return "ERROR_" + error;
+        }
     }
 
     private void showQuickActions(boolean show) {
@@ -1296,15 +1458,19 @@ public class HedgehogOverlayService extends Service {
         if (edgeTabView == null || edgeTabParams == null || hedgehogParams == null) return;
         int tabW = dp(EDGE_TAB_WIDTH_DP);
         int tabH = dp(EDGE_TAB_HEIGHT_DP);
+        int touchW = dp(EDGE_TAB_TOUCH_WIDTH_DP);
+        int touchH = dp(EDGE_TAB_TOUCH_HEIGHT_DP);
         int visibleSlice = dp(EDGE_TAB_VISIBLE_SLICE_DP);
+        int insetW = Math.max(0, touchW - tabW);
         edgeTabParams.y = clamp(
-            hedgehogParams.y + (dp(HEDGEHOG_TOUCH_BOX_DP) - tabH) / 2,
+            hedgehogParams.y + (dp(HEDGEHOG_TOUCH_BOX_DP) - touchH) / 2,
             0,
-            Math.max(0, getScreenHeight() - tabH)
+            Math.max(0, getScreenHeight() - touchH)
         );
         edgeTabParams.x = hiddenEdgeRight
-            ? (getScreenWidth() - visibleSlice)
+            ? (getScreenWidth() - visibleSlice - insetW)
             : -(tabW - visibleSlice);
+        edgeTabView.setBackground(buildEdgeTabBackground(hiddenEdgeRight));
     }
 
     private void updateBubbleTailPlacement() {

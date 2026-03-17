@@ -4,12 +4,12 @@ plugins {
 
 android {
     namespace 'ai.agent1c.hitomi'
-    compileSdk 35
+    compileSdk 34
 
     defaultConfig {
         applicationId "ai.agent1c.hitomi"
         minSdk 21
-        targetSdk 35
+        targetSdk 34
         versionCode 4
         versionName "0.1.0"
     }

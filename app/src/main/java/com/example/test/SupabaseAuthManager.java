@@ -45,6 +45,7 @@ public class SupabaseAuthManager {
     private static final String K_WALLET_CHAIN = "wallet_chain";
     private static final String K_OAUTH_CODE_VERIFIER = "oauth_code_verifier";
     private static final String K_LAST_HANDOFF_CODE = "last_handoff_code";
+    private static final String K_DIRECT_API_KEY = "direct_api_key";
 
     private final SharedPreferences prefs;
     private final SecureRandom random = new SecureRandom();
@@ -182,6 +183,9 @@ public class SupabaseAuthManager {
     }
 
     public boolean isSignedIn() {
+        if (BuildConfig.IS_OPEN_VARIANT) {
+            return !getDirectApiKey().isEmpty();
+        }
         return !getAccessTokenRaw().isEmpty() && !isExpired();
     }
 
@@ -190,6 +194,9 @@ public class SupabaseAuthManager {
     }
 
     public String getDisplayName() {
+        if (BuildConfig.IS_OPEN_VARIANT) {
+            return "friend";
+        }
         String display = prefs.getString(K_DISPLAY, "").trim();
         if (!display.isEmpty()) return display;
         String email = getEmail();
@@ -202,6 +209,7 @@ public class SupabaseAuthManager {
     }
 
     public String getProvider() {
+        if (BuildConfig.IS_OPEN_VARIANT) return "grok";
         return prefs.getString(K_PROVIDER, "");
     }
 
@@ -218,6 +226,9 @@ public class SupabaseAuthManager {
     }
 
     public synchronized String ensureValidAccessToken() throws Exception {
+        if (BuildConfig.IS_OPEN_VARIANT) {
+            return getDirectApiKey();
+        }
         String token = getAccessTokenRaw();
         if (token.isEmpty()) return "";
         long expiresAt = prefs.getLong(K_EXPIRES_AT, 0L);
@@ -252,10 +263,12 @@ public class SupabaseAuthManager {
             .remove(K_WALLET_ADDRESS)
             .remove(K_WALLET_CHAIN)
             .remove(K_LAST_HANDOFF_CODE)
+            .remove(K_DIRECT_API_KEY)
             .apply();
     }
 
     public void refreshUserProfile() throws Exception {
+        if (BuildConfig.IS_OPEN_VARIANT) return;
         String token = getAccessTokenRaw();
         if (token.isEmpty()) return;
         JSONObject user = requestJson("GET", SUPABASE_URL + "/auth/v1/user", null, token);
@@ -329,6 +342,9 @@ public class SupabaseAuthManager {
     }
 
     public void exchangeAndroidHandoffCode(String handoffCode) throws Exception {
+        if (BuildConfig.IS_OPEN_VARIANT) {
+            throw new IllegalStateException("Open Hitomi does not use hosted auth handoff");
+        }
         JSONObject body = new JSONObject();
         body.put("action", "exchange");
         body.put("handoff_code", handoffCode);
@@ -365,6 +381,7 @@ public class SupabaseAuthManager {
     }
 
     private boolean isExpired() {
+        if (BuildConfig.IS_OPEN_VARIANT) return false;
         long expiresAt = prefs.getLong(K_EXPIRES_AT, 0L);
         if (expiresAt <= 0L) return false;
         return (System.currentTimeMillis() / 1000L) >= expiresAt;
@@ -429,6 +446,21 @@ public class SupabaseAuthManager {
             .putString(K_REFRESH, refreshToken == null ? "" : refreshToken)
             .putLong(K_EXPIRES_AT, expiresAt)
             .apply();
+    }
+
+    public void signInWithDirectApiKey(String apiKey) {
+        prefs.edit()
+            .putString(K_DIRECT_API_KEY, apiKey == null ? "" : apiKey.trim())
+            .putString(K_PROVIDER, "grok")
+            .putString(K_DISPLAY, "friend")
+            .remove(K_EMAIL)
+            .remove(K_WALLET_ADDRESS)
+            .remove(K_WALLET_CHAIN)
+            .apply();
+    }
+
+    public String getDirectApiKey() {
+        return prefs.getString(K_DIRECT_API_KEY, "").trim();
     }
 
     private String randomToken(int byteCount) {

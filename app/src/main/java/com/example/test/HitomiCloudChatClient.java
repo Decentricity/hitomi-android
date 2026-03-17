@@ -15,6 +15,8 @@ import java.nio.charset.StandardCharsets;
 
 public class HitomiCloudChatClient {
     private static final String MODEL = "grok-4-latest";
+    private static final String DIRECT_MODEL = "grok-4";
+    private static final String DIRECT_XAI_CHAT_URL = "https://api.x.ai/v1/chat/completions";
     private static final double TEMPERATURE = 0.4;
 
     private final Context appContext;
@@ -32,10 +34,6 @@ public class HitomiCloudChatClient {
     }
 
     public String send(JSONArray historyMessages, String userName) throws Exception {
-        String accessToken = authManager.ensureValidAccessToken();
-        if (accessToken == null || accessToken.isEmpty()) {
-            throw new IllegalStateException("Please sign in first.");
-        }
         String systemPrompt = buildSystemPrompt(userName);
         JSONArray payloadMessages = new JSONArray();
         payloadMessages.put(new JSONObject().put("role", "system").put("content", systemPrompt));
@@ -44,9 +42,22 @@ public class HitomiCloudChatClient {
         }
 
         JSONObject body = new JSONObject();
-        body.put("model", MODEL);
+        body.put("model", BuildConfig.IS_OPEN_VARIANT ? DIRECT_MODEL : MODEL);
         body.put("temperature", TEMPERATURE);
         body.put("messages", payloadMessages);
+
+        if (BuildConfig.IS_OPEN_VARIANT) {
+            String apiKey = authManager.getDirectApiKey();
+            if (apiKey.isEmpty()) {
+                throw new IllegalStateException("Please enter a Grok API key first.");
+            }
+            return sendDirectXai(body, apiKey, userName);
+        }
+
+        String accessToken = authManager.ensureValidAccessToken();
+        if (accessToken == null || accessToken.isEmpty()) {
+            throw new IllegalStateException("Please sign in first.");
+        }
 
         HttpURLConnection conn = (HttpURLConnection) new URL(SupabaseAuthManager.XAI_CHAT_FUNCTION_URL).openConnection();
         conn.setRequestMethod("POST");
@@ -83,6 +94,47 @@ public class HitomiCloudChatClient {
         JSONObject msg = choices.getJSONObject(0).optJSONObject("message");
         String content = msg != null ? msg.optString("content", "") : "";
         if (content == null || content.trim().isEmpty()) throw new IllegalStateException("Cloud provider returned no message.");
+        return content.trim();
+    }
+
+    private String sendDirectXai(JSONObject body, String apiKey, String userName) throws Exception {
+        HttpURLConnection conn = (HttpURLConnection) new URL(DIRECT_XAI_CHAT_URL).openConnection();
+        conn.setRequestMethod("POST");
+        conn.setConnectTimeout(15000);
+        conn.setReadTimeout(60000);
+        conn.setRequestProperty("Content-Type", "application/json");
+        conn.setRequestProperty("Authorization", "Bearer " + apiKey);
+        conn.setDoOutput(true);
+        byte[] bytes = body.toString().getBytes(StandardCharsets.UTF_8);
+        conn.setFixedLengthStreamingMode(bytes.length);
+        try (OutputStream os = conn.getOutputStream()) {
+            os.write(bytes);
+        }
+
+        int code = conn.getResponseCode();
+        String respText = readAll(code >= 200 && code < 300 ? conn.getInputStream() : conn.getErrorStream());
+        JSONObject resp = respText.isEmpty() ? new JSONObject() : new JSONObject(respText);
+        if (code < 200 || code >= 300) {
+            String errMsg = "";
+            JSONObject err = resp.optJSONObject("error");
+            if (err != null) {
+                String ecode = err.optString("code", "");
+                String emsg = err.optString("message", "");
+                errMsg = (ecode.isEmpty() ? "" : " code=" + ecode) + (emsg.isEmpty() ? "" : ": " + emsg);
+            }
+            if (code == 401) {
+                throw new IllegalStateException("Grok API key rejected" + errMsg);
+            }
+            if (code == 429) {
+                return "I ran out of tokens, " + (userName == null || userName.isEmpty() ? "friend" : userName) + ". :(🐷 Let's talk again tomorrow. :)🦔";
+            }
+            throw new IllegalStateException("Grok API call failed (" + code + ")" + errMsg);
+        }
+        JSONArray choices = resp.optJSONArray("choices");
+        if (choices == null || choices.length() == 0) throw new IllegalStateException("Grok returned no message.");
+        JSONObject msg = choices.getJSONObject(0).optJSONObject("message");
+        String content = msg != null ? msg.optString("content", "") : "";
+        if (content == null || content.trim().isEmpty()) throw new IllegalStateException("Grok returned no message.");
         return content.trim();
     }
 

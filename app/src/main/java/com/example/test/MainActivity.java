@@ -11,6 +11,7 @@ import android.os.Bundle;
 import android.provider.Settings;
 import android.view.View;
 import android.widget.Button;
+import android.widget.EditText;
 import android.widget.TextView;
 import android.widget.Toast;
 
@@ -31,10 +32,14 @@ public class MainActivity extends AppCompatActivity {
         "mkdir -p ~/.termux && grep -qx 'allow-external-apps=true' ~/.termux/termux.properties 2>/dev/null || echo 'allow-external-apps=true' >> ~/.termux/termux.properties";
     private TextView statusText;
     private TextView authStatusText;
+    private TextView authTitleText;
     private TextView loginHintText;
     private SupabaseAuthManager authManager;
     private TermuxCommandBridge termuxBridge;
     private Button loginButton;
+    private View apiKeyEntryRow;
+    private EditText apiKeyInput;
+    private Button apiKeySubmitButton;
     private Button signOutButton;
     private Button startOverlayButton;
     private Button stopOverlayButton;
@@ -60,8 +65,12 @@ public class MainActivity extends AppCompatActivity {
         termuxBridge = new TermuxCommandBridge(this);
         statusText = findViewById(R.id.statusText);
         authStatusText = findViewById(R.id.authStatusText);
+        authTitleText = findViewById(R.id.authTitleText);
         loginHintText = findViewById(R.id.loginHintText);
         loginButton = findViewById(R.id.loginButton);
+        apiKeyEntryRow = findViewById(R.id.apiKeyEntryRow);
+        apiKeyInput = findViewById(R.id.apiKeyInput);
+        apiKeySubmitButton = findViewById(R.id.apiKeySubmitButton);
         signOutButton = findViewById(R.id.signOutButton);
         Button overlayPermissionButton = findViewById(R.id.overlayPermissionButton);
         startOverlayButton = findViewById(R.id.startOverlayButton);
@@ -80,8 +89,12 @@ public class MainActivity extends AppCompatActivity {
         maybeHandlePermissionIntent(getIntent());
 
         loginButton.setOnClickListener(v -> openWebAuth());
+        if (apiKeySubmitButton != null) {
+            apiKeySubmitButton.setOnClickListener(v -> submitDirectApiKey());
+        }
         signOutButton.setOnClickListener(v -> {
             authManager.signOut();
+            if (apiKeyInput != null) apiKeyInput.setText("");
             refreshAuthStatus();
             statusText.setText("Status: signed out");
             refreshControlVisibility();
@@ -120,6 +133,7 @@ public class MainActivity extends AppCompatActivity {
             termuxSetupCopyButton.setOnClickListener(v -> copyTermuxSetupCommand());
         }
 
+        configureFlavorUi();
         refreshAuthStatus();
         refreshControlVisibility();
         refreshTermuxStatus();
@@ -207,6 +221,10 @@ public class MainActivity extends AppCompatActivity {
     }
 
     private void openWebAuth() {
+        if (BuildConfig.IS_OPEN_VARIANT) {
+            submitDirectApiKey();
+            return;
+        }
         try {
             String url = authManager.buildWebAuthLaunchUrl(null);
             if (!launchAuthInBrowser(Uri.parse(url), null)) {
@@ -303,6 +321,7 @@ public class MainActivity extends AppCompatActivity {
     }
 
     private void handleAuthIntent(Intent intent) {
+        if (BuildConfig.IS_OPEN_VARIANT) return;
         if (intent == null) return;
         Uri data = intent.getData();
         if (data == null) return;
@@ -329,6 +348,16 @@ public class MainActivity extends AppCompatActivity {
     }
 
     private void refreshAuthStatus() {
+        if (BuildConfig.IS_OPEN_VARIANT) {
+            if (!authManager.isSignedIn()) {
+                authStatusText.setText("Auth: Grok API key required");
+                refreshControlVisibility();
+                return;
+            }
+            authStatusText.setText("Auth: Grok API key saved locally");
+            refreshControlVisibility();
+            return;
+        }
         if (!authManager.isSignedIn()) {
             authStatusText.setText("Auth: signed out");
             refreshControlVisibility();
@@ -348,7 +377,12 @@ public class MainActivity extends AppCompatActivity {
     private void refreshControlVisibility() {
         boolean signedIn = authManager != null && authManager.isSignedIn();
         boolean overlayRunning = HedgehogOverlayService.isOverlayRunning();
-        if (loginButton != null) loginButton.setVisibility(signedIn ? android.view.View.GONE : android.view.View.VISIBLE);
+        if (loginButton != null) {
+            loginButton.setVisibility(BuildConfig.IS_OPEN_VARIANT || signedIn ? android.view.View.GONE : android.view.View.VISIBLE);
+        }
+        if (apiKeyEntryRow != null) {
+            apiKeyEntryRow.setVisibility(BuildConfig.IS_OPEN_VARIANT && !signedIn ? View.VISIBLE : View.GONE);
+        }
         if (loginHintText != null) loginHintText.setVisibility(signedIn ? android.view.View.GONE : android.view.View.VISIBLE);
         if (signOutButton != null) signOutButton.setVisibility(signedIn ? android.view.View.VISIBLE : android.view.View.GONE);
         if (startOverlayButton != null) startOverlayButton.setVisibility(overlayRunning ? android.view.View.GONE : android.view.View.VISIBLE);
@@ -528,5 +562,33 @@ public class MainActivity extends AppCompatActivity {
         String m = e.getMessage();
         if (m == null || m.trim().isEmpty()) return e.getClass().getSimpleName();
         return m;
+    }
+
+    private void configureFlavorUi() {
+        if (!BuildConfig.IS_OPEN_VARIANT) return;
+        if (authTitleText != null) authTitleText.setText("Enter your Grok API key here:");
+        if (loginHintText != null) {
+            loginHintText.setText("Open Hitomi keeps your API key on this device and skips the hosted login flow.");
+        }
+        if (apiKeyInput != null) {
+            String savedKey = authManager.getDirectApiKey();
+            if (!savedKey.isEmpty()) apiKeyInput.setText(savedKey);
+        }
+    }
+
+    private void submitDirectApiKey() {
+        if (!BuildConfig.IS_OPEN_VARIANT) return;
+        String apiKey = apiKeyInput == null ? "" : String.valueOf(apiKeyInput.getText()).trim();
+        if (apiKey.isEmpty()) {
+            authStatusText.setText("Auth: enter a Grok API key first");
+            Toast.makeText(this, "Enter a Grok API key.", Toast.LENGTH_SHORT).show();
+            return;
+        }
+        authManager.signInWithDirectApiKey(apiKey);
+        refreshAuthStatus();
+        statusText.setText("Status: API key saved");
+        refreshControlVisibility();
+        Toast.makeText(this, "Grok API key saved locally.", Toast.LENGTH_SHORT).show();
+        maybeAutoLaunchOverlayAndHideMain();
     }
 }

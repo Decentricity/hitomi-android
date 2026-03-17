@@ -4,7 +4,14 @@
 
 Native Android floating Hitomi ("talking hedgehog") companion app for the Agent1c ecosystem.
 
-This repo is the Android client prototype / app codebase.
+This repo now ships two Android variants from one shared codebase:
+- `Hitomi`
+  - package ID: `ai.agent1c.hitomi`
+  - hosted auth + hosted chat path
+- `Open Hitomi`
+  - package ID: `ai.agent1c.hitomi.open`
+  - local Grok API key entry on-device
+  - intended BYOK / F-Droid-friendly direction
 
 Related projects:
 - `agent1c.ai` (cloud-hosted Agent1c OS)
@@ -28,21 +35,24 @@ Convenience scripts:
   - applies the Termux-host `aapt2` override for this environment
   - builds a signed release AAB and copies it into `releases/<version>/`
 
-## Download APK (Current)
+For local debug APKs:
+- `./gradlew assembleHostedDebug`
+- `./gradlew assembleOpenDebug`
 
-Release `0.1.1`:
-- Direct APK download: https://raw.githubusercontent.com/Decentricity/hitomi-android/master/releases/0.1.1/hitomi-v0.1.1-debug.apk
-- `releases/0.1.1/hitomi-v0.1.1-debug.apk`
-- checksum: `releases/0.1.1/SHA256SUMS_APK.txt`
+Typical output paths:
+- hosted debug APK:
+  - `app/build/outputs/apk/hosted/debug/app-hosted-debug.apk`
+- open debug APK:
+  - `app/build/outputs/apk/open/debug/app-open-debug.apk`
 
 ## What The App Includes
 
 - BeOS/HedgeyOS-inspired Android main screen styling
-- Supabase login with web-first handoff back into the app
 - Floating Hitomi hedgehog overlay as the main companion surface
 - Signed-in welcome line that advertises browser, Termux, and Solana capabilities
 - Clippy-style chat bubble with tail
-- Cloud chat via Agent1c.ai Supabase/xAI backend
+- Hosted variant uses Agent1c.ai/Supabase-backed auth + chat
+- Open variant accepts a Grok API key locally and skips hosted web login
 
 - Long-press quick actions for settings, mic, and hide-to-edge
 - Native Android STT always-listening mode
@@ -75,7 +85,6 @@ Release `0.1.1`:
 ## Notes
 
 - This is an early prototype release.
-- I plan to publish through F-Droid later; for now, direct APK testing is the intended path.
 - Signed release AAB builds are supported when a local `keystore.properties` is present.
 - Keep signing material local to the build machine; do not commit `keystore.properties` or the keystore itself.
 

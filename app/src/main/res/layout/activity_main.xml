@@ -39,7 +39,7 @@
                 android:layout_height="wrap_content"
                 android:layout_marginStart="10dp"
                 android:layout_marginEnd="10dp"
-                android:text="Hitomi"
+                android:text="@string/app_name"
                 android:textColor="#111111"
                 android:textSize="18sp"
                 android:textStyle="bold" />
@@ -59,6 +59,7 @@
             android:padding="12dp">
 
             <TextView
+                android:id="@+id/authTitleText"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:text="Sign in or sign up to Agent1c.ai:"
@@ -95,6 +96,41 @@
                 android:text="Choose Google, X, or Magic Link in the Agent1c.ai login window."
                 android:textColor="#444444"
                 android:textSize="12sp" />
+
+            <LinearLayout
+                android:id="@+id/apiKeyEntryRow"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="10dp"
+                android:gravity="center_vertical"
+                android:orientation="horizontal"
+                android:visibility="gone">
+
+                <EditText
+                    android:id="@+id/apiKeyInput"
+                    android:layout_width="0dp"
+                    android:layout_height="40dp"
+                    android:layout_weight="1"
+                    android:autofillHints=""
+                    android:background="#f4f4f4"
+                    android:hint="xai-..."
+                    android:inputType="textVisiblePassword"
+                    android:paddingLeft="10dp"
+                    android:paddingRight="10dp"
+                    android:singleLine="true"
+                    android:textColor="#111111"
+                    android:textColorHint="#666666" />
+
+                <Button
+                    android:id="@+id/apiKeySubmitButton"
+                    android:layout_width="56dp"
+                    android:layout_height="40dp"
+                    android:layout_marginStart="8dp"
+                    android:background="@drawable/beos_button_bg_pink"
+                    android:text=">>"
+                    android:textAllCaps="false"
+                    android:textColor="#111111" />
+            </LinearLayout>
 
             <Button
                 android:id="@+id/signOutButton"

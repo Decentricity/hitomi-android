@@ -1,0 +1,1 @@
+cc30f59609521ff8205eb8171d44aba0471c2e69408b6859e8b5eacab68ca495  releases/0.0.5/agent1c-hitomi-android-v0.0.5-release-vc3.aab

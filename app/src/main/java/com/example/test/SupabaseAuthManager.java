@@ -25,8 +25,14 @@ public class SupabaseAuthManager {
     public static final String SUPABASE_ANON_KEY = "sb_publishable_r_NH0OEY5Y6rNy9rzPu1NQ_PYGZs5Nj";
     public static final String XAI_CHAT_FUNCTION_URL = SUPABASE_URL + "/functions/v1/xai-chat";
     public static final String ANDROID_AUTH_HANDOFF_FUNCTION_URL = SUPABASE_URL + "/functions/v1/android-auth-handoff";
-    public static final String APP_REDIRECT_URI = "agent1cai://auth/callback";
-    public static final String OAUTH_REDIRECT_URI = "agent1cai://auth/oauth";
+    public static final String APP_REDIRECT_URI = "hitomicompanion://auth/callback";
+    public static final String OAUTH_REDIRECT_URI = "hitomicompanion://auth/oauth";
+    public static final String LEGACY_APP_REDIRECT_URI = "agent1cai://auth/callback";
+    public static final String LEGACY_OAUTH_REDIRECT_URI = "agent1cai://auth/oauth";
+    public static final String AUTH_ENTRY_URL_PRIMARY = "https://agent1c.ai/";
+    public static final String AUTH_ENTRY_URL_FALLBACK = "https://hitomicompanion.github.io/";
+    // Fast operator revert: set true to temporarily route auth launch to the standalone fallback.
+    public static final boolean USE_FALLBACK_AUTH_ENTRY = false;
 
     private static final String PREFS = "agent1c_android_auth";
     private static final String K_ACCESS = "access_token";
@@ -35,6 +41,8 @@ public class SupabaseAuthManager {
     private static final String K_EMAIL = "user_email";
     private static final String K_PROVIDER = "provider";
     private static final String K_DISPLAY = "display_name";
+    private static final String K_WALLET_ADDRESS = "wallet_address";
+    private static final String K_WALLET_CHAIN = "wallet_chain";
     private static final String K_OAUTH_CODE_VERIFIER = "oauth_code_verifier";
     private static final String K_LAST_HANDOFF_CODE = "last_handoff_code";
 
@@ -61,7 +69,7 @@ public class SupabaseAuthManager {
     }
 
     public String buildWebAuthLaunchUrl(String provider) {
-        Uri.Builder b = Uri.parse("https://agent1c.ai/").buildUpon();
+        Uri.Builder b = Uri.parse(USE_FALLBACK_AUTH_ENTRY ? AUTH_ENTRY_URL_FALLBACK : AUTH_ENTRY_URL_PRIMARY).buildUpon();
         b.appendQueryParameter("android_auth", "1");
         if (provider != null) {
             String p = provider.trim().toLowerCase();
@@ -108,7 +116,7 @@ public class SupabaseAuthManager {
         if (uri == null) return false;
         String dataString = uri.toString();
         Log.d(TAG, "handleAuthCallbackUri data=" + dataString);
-        if (!dataString.startsWith(APP_REDIRECT_URI)) return false;
+        if (!isSupportedCallbackUri(dataString)) return false;
         String query = uri.getEncodedQuery();
         String fragment = "";
         int hash = dataString.indexOf('#');
@@ -165,6 +173,14 @@ public class SupabaseAuthManager {
         return true;
     }
 
+    private boolean isSupportedCallbackUri(String dataString) {
+        if (dataString == null || dataString.isEmpty()) return false;
+        return dataString.startsWith(APP_REDIRECT_URI)
+            || dataString.startsWith(OAUTH_REDIRECT_URI)
+            || dataString.startsWith(LEGACY_APP_REDIRECT_URI)
+            || dataString.startsWith(LEGACY_OAUTH_REDIRECT_URI);
+    }
+
     public boolean isSignedIn() {
         return !getAccessTokenRaw().isEmpty() && !isExpired();
     }
@@ -187,6 +203,18 @@ public class SupabaseAuthManager {
 
     public String getProvider() {
         return prefs.getString(K_PROVIDER, "");
+    }
+
+    public String getWalletAddress() {
+        return prefs.getString(K_WALLET_ADDRESS, "");
+    }
+
+    public String getWalletChain() {
+        return prefs.getString(K_WALLET_CHAIN, "");
+    }
+
+    public boolean hasConnectedSolanaWallet() {
+        return "solana".equalsIgnoreCase(getWalletChain()) && !getWalletAddress().trim().isEmpty();
     }
 
     public synchronized String ensureValidAccessToken() throws Exception {
@@ -221,6 +249,8 @@ public class SupabaseAuthManager {
             .remove(K_EMAIL)
             .remove(K_PROVIDER)
             .remove(K_DISPLAY)
+            .remove(K_WALLET_ADDRESS)
+            .remove(K_WALLET_CHAIN)
             .remove(K_LAST_HANDOFF_CODE)
             .apply();
     }
@@ -232,19 +262,49 @@ public class SupabaseAuthManager {
         String email = user.optString("email", "");
         String provider = "";
         String display = "";
+        String walletAddress = "";
+        String walletChain = "";
 
         JSONObject appMeta = user.optJSONObject("app_metadata");
+        JSONObject userMeta = user.optJSONObject("user_metadata");
         if (appMeta != null) provider = appMeta.optString("provider", "");
 
+        JSONObject customClaims = userMeta == null ? null : userMeta.optJSONObject("custom_claims");
+
         JSONArray identities = user.optJSONArray("identities");
+        String providerRawBase = provider.trim().toLowerCase();
+        String chainHint = firstNonBlank(
+            findNestedString(customClaims, "chain", "network"),
+            findNestedString(userMeta, "chain", "network"),
+            findNestedString(appMeta, "chain", "network")
+        ).toLowerCase();
+        if (("wallet".equals(providerRawBase) || "web3".equals(providerRawBase)) && "solana".equals(chainHint)) {
+            provider = "solana";
+        } else if ("twitter".equals(providerRawBase)) {
+            provider = "x";
+        }
         if (identities != null) {
             for (int i = 0; i < identities.length(); i++) {
                 JSONObject ident = identities.optJSONObject(i);
                 if (ident == null) continue;
-                String p = ident.optString("provider", "");
+                String p = ident.optString("provider", "").trim().toLowerCase();
                 JSONObject idData = ident.optJSONObject("identity_data");
+                String identChain = firstNonBlank(
+                    findNestedString(idData, "chain", "network"),
+                    chainHint
+                ).toLowerCase();
+                if (("wallet".equals(p) || "web3".equals(p)) && "solana".equals(identChain)) {
+                    p = "solana";
+                } else if ("twitter".equals(p)) {
+                    p = "x";
+                }
+                if (provider.isEmpty() && !p.isEmpty()) provider = p;
                 if (idData == null) continue;
-                if ("x".equals(p) || "twitter".equals(p)) {
+                if ("solana".equals(p) && walletAddress.isEmpty()) {
+                    walletAddress = findFirstWalletAddress(idData, customClaims, userMeta, appMeta, ident);
+                    walletChain = walletAddress.isEmpty() ? "" : "solana";
+                    if (display.isEmpty()) display = shortenAddress(walletAddress);
+                } else if ("x".equals(p) || "twitter".equals(p)) {
                     String uname = idData.optString("user_name", "").trim();
                     if (!uname.isEmpty()) display = "@" + uname;
                 } else if ("google".equals(p) && display.isEmpty()) {
@@ -252,12 +312,19 @@ public class SupabaseAuthManager {
                 }
             }
         }
+        if (walletAddress.isEmpty()) {
+            walletAddress = findFirstWalletAddress(customClaims, userMeta, appMeta);
+            walletChain = walletAddress.isEmpty() ? "" : inferWalletChain(provider, walletAddress);
+        }
         if (display.isEmpty() && email.contains("@")) display = email.substring(0, email.indexOf('@'));
+        if (display.isEmpty() && !walletAddress.isEmpty()) display = shortenAddress(walletAddress);
 
         prefs.edit()
             .putString(K_EMAIL, email)
             .putString(K_PROVIDER, provider)
             .putString(K_DISPLAY, display)
+            .putString(K_WALLET_ADDRESS, walletAddress)
+            .putString(K_WALLET_CHAIN, walletChain)
             .apply();
     }
 
@@ -281,11 +348,17 @@ public class SupabaseAuthManager {
             String email = identity.optString("email", "");
             String provider = identity.optString("provider", "");
             String handle = identity.optString("handle", "");
-            String display = (!handle.isEmpty()) ? (handle.startsWith("@") ? handle : "@" + handle) : email;
+            String walletAddress = findFirstWalletAddress(identity);
+            String walletChain = inferWalletChain(provider, walletAddress);
+            String display = (!handle.isEmpty())
+                ? (handle.startsWith("@") ? handle : "@" + handle)
+                : (!email.isEmpty() ? email : shortenAddress(walletAddress));
             prefs.edit()
                 .putString(K_EMAIL, email)
                 .putString(K_PROVIDER, provider)
                 .putString(K_DISPLAY, display)
+                .putString(K_WALLET_ADDRESS, walletAddress)
+                .putString(K_WALLET_CHAIN, walletChain)
                 .apply();
         }
         try { refreshUserProfile(); } catch (Exception ignored) {}
@@ -390,5 +463,67 @@ public class SupabaseAuthManager {
         } catch (Exception ignored) {
             return fallback;
         }
+    }
+
+    private static String inferWalletChain(String provider, String walletAddress) {
+        String p = provider == null ? "" : provider.trim().toLowerCase();
+        if ("solana".equals(p)) return walletAddress == null || walletAddress.trim().isEmpty() ? "" : "solana";
+        return isLikelySolanaAddress(walletAddress) ? "solana" : "";
+    }
+
+    private static String findFirstWalletAddress(JSONObject... sources) {
+        if (sources == null) return "";
+        for (JSONObject source : sources) {
+            if (source == null) continue;
+            String direct = firstNonBlank(
+                source.optString("wallet_address", ""),
+                source.optString("address", ""),
+                source.optString("public_key", ""),
+                source.optString("publicKey", ""),
+                source.optString("account", ""),
+                source.optString("account_address", ""),
+                source.optString("provider_id", ""),
+                source.optString("id", "")
+            );
+            if (isLikelySolanaAddress(direct)) return direct.trim();
+            String sub = source.optString("sub", "");
+            if (isLikelySolanaAddress(sub)) return sub.trim();
+            if (sub.contains(":")) {
+                String tail = sub.substring(sub.lastIndexOf(':') + 1).trim();
+                if (isLikelySolanaAddress(tail)) return tail;
+            }
+        }
+        return "";
+    }
+
+    private static String findNestedString(JSONObject obj, String... keys) {
+        if (obj == null || keys == null) return "";
+        for (String key : keys) {
+            if (key == null || key.trim().isEmpty()) continue;
+            String value = obj.optString(key, "");
+            if (value != null && !value.trim().isEmpty()) return value.trim();
+        }
+        return "";
+    }
+
+    private static String firstNonBlank(String... values) {
+        if (values == null) return "";
+        for (String value : values) {
+            if (value != null && !value.trim().isEmpty()) return value.trim();
+        }
+        return "";
+    }
+
+    private static boolean isLikelySolanaAddress(String value) {
+        if (value == null) return false;
+        String trimmed = value.trim();
+        if (trimmed.length() < 32 || trimmed.length() > 64) return false;
+        return trimmed.matches("^[1-9A-HJ-NP-Za-km-z]+$");
+    }
+
+    private static String shortenAddress(String address) {
+        String value = address == null ? "" : address.trim();
+        if (value.length() <= 12) return value;
+        return value.substring(0, 4) + "..." + value.substring(value.length() - 4);
     }
 }

@@ -1,0 +1,1 @@
+e3f85429d4effcc174e1b33c60027199915f0fc844f1e4ea772cf1004ca503ea  /home/decentricity/hitomi-android/releases/0.1.0/hitomi-v0.1.0-debug.apk

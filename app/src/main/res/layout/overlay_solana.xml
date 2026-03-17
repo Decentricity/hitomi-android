@@ -1,0 +1,131 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="wrap_content"
+    android:layout_height="wrap_content"
+    android:orientation="vertical">
+
+    <LinearLayout
+        android:id="@+id/hitomiSolanaTitlePill"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginStart="6dp"
+        android:background="@drawable/beos_titlepill_bg_purple"
+        android:gravity="center_vertical"
+        android:orientation="horizontal"
+        android:paddingLeft="6dp"
+        android:paddingTop="3dp"
+        android:paddingRight="6dp"
+        android:paddingBottom="3dp">
+
+        <View
+            android:layout_width="8dp"
+            android:layout_height="8dp"
+            android:background="@drawable/beos_title_button_bg" />
+
+        <View
+            android:layout_width="8dp"
+            android:layout_height="8dp"
+            android:layout_marginStart="3dp"
+            android:background="@drawable/beos_title_button_bg" />
+
+        <TextView
+            android:id="@+id/hitomiSolanaTitleText"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="8dp"
+            android:layout_marginEnd="8dp"
+            android:text="Solana"
+            android:textColor="#111111"
+            android:textSize="12sp"
+            android:textStyle="bold" />
+
+        <ImageButton
+            android:id="@+id/hitomiSolanaClose"
+            android:layout_width="20dp"
+            android:layout_height="20dp"
+            android:background="@android:color/transparent"
+            android:contentDescription="Close Solana window"
+            android:padding="2dp"
+            android:src="@android:drawable/ic_menu_close_clear_cancel" />
+    </LinearLayout>
+
+    <LinearLayout
+        android:layout_width="250dp"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="-1dp"
+        android:background="@drawable/beos_window_body_bg"
+        android:orientation="vertical"
+        android:padding="8dp">
+
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Add a Solana wallet for Hitomi to inspect."
+            android:textColor="#222222"
+            android:textSize="12sp" />
+
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:text="Wallet Name"
+            android:textColor="#111111"
+            android:textSize="12sp"
+            android:textStyle="bold" />
+
+        <EditText
+            android:id="@+id/hitomiSolanaWalletName"
+            android:layout_width="match_parent"
+            android:layout_height="36dp"
+            android:layout_marginTop="4dp"
+            android:background="#f4f4f4"
+            android:hint="My main wallet"
+            android:padding="6dp"
+            android:singleLine="true"
+            android:textColor="#111111"
+            android:textSize="12sp" />
+
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:text="Wallet Address"
+            android:textColor="#111111"
+            android:textSize="12sp"
+            android:textStyle="bold" />
+
+        <EditText
+            android:id="@+id/hitomiSolanaWalletAddress"
+            android:layout_width="match_parent"
+            android:layout_height="72dp"
+            android:layout_marginTop="4dp"
+            android:background="#f4f4f4"
+            android:gravity="top|start"
+            android:hint="Paste Solana public address"
+            android:inputType="textMultiLine|textNoSuggestions"
+            android:maxLines="3"
+            android:padding="6dp"
+            android:textColor="#111111"
+            android:textSize="12sp" />
+
+        <TextView
+            android:id="@+id/hitomiSolanaStatus"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:text="Hitomi stores this locally on your phone for read-only balance and transaction checks."
+            android:textColor="#4b2c6b"
+            android:textSize="11sp" />
+
+        <Button
+            android:id="@+id/hitomiSolanaSave"
+            android:layout_width="match_parent"
+            android:layout_height="36dp"
+            android:layout_marginTop="10dp"
+            android:background="@drawable/beos_button_bg"
+            android:text="OK"
+            android:textAllCaps="false"
+            android:textColor="#111111" />
+    </LinearLayout>
+
+</LinearLayout>

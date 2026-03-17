@@ -72,20 +72,25 @@ public class HedgehogOverlayService extends Service {
     private static final String ANDROID_BROWSER_TOOL_NAME = "android_browser_open";
     private static final String ANDROID_BROWSER_BROWSE_TOOL_NAME = "android_browser_browse";
     private static final String ANDROID_TERMUX_EXEC_TOOL_NAME = "android_termux_exec";
+    private static final String ANDROID_SOLANA_OVERVIEW_TOOL_NAME = "android_solana_wallet_overview";
+    private static final String ANDROID_SOLANA_REFRESH_TOOL_NAME = "android_solana_wallet_refresh";
 
     private WindowManager windowManager;
     private View hedgehogView;
     private View bubbleView;
     private View browserView;
+    private View solanaView;
     private TextView edgeTabView;
     private ParticleLinkView particleLinkView;
     private WindowManager.LayoutParams hedgehogParams;
     private WindowManager.LayoutParams bubbleParams;
     private WindowManager.LayoutParams browserParams;
+    private WindowManager.LayoutParams solanaParams;
     private WindowManager.LayoutParams edgeTabParams;
     private WindowManager.LayoutParams particleLinkParams;
     private boolean bubbleVisible = false;
     private boolean browserVisible = false;
+    private boolean solanaVisible = false;
     private Runnable browserSummonParticlesStop;
     private final ExecutorService chatExecutor = Executors.newSingleThreadExecutor();
     private final Handler mainHandler = new Handler(Looper.getMainLooper());
@@ -93,6 +98,9 @@ public class HedgehogOverlayService extends Service {
     private HitomiCloudChatClient chatClient;
     private TextView bubbleBodyView;
     private TextView browserUrlView;
+    private EditText solanaWalletNameInput;
+    private EditText solanaWalletAddressInput;
+    private TextView solanaStatusView;
     private ScrollView bubbleBodyScrollView;
     private View bubbleTailTopView;
     private View bubbleTailBottomView;
@@ -128,6 +136,8 @@ public class HedgehogOverlayService extends Service {
     private int hiddenRestoreY = -1;
     private BrowserReadRequest pendingBrowserReadRequest;
     private TermuxCommandBridge termuxCommandBridge;
+    private SolanaWalletClient solanaWalletClient;
+    private String pendingWalletPrompt = "";
     private float browserReadParticleProgress = 0f;
     private final Runnable sttRestartRunnable = new Runnable() {
         @Override public void run() {
@@ -178,6 +188,9 @@ public class HedgehogOverlayService extends Service {
             if (browserView != null) {
                 try { windowManager.removeView(browserView); } catch (Exception ignored) {}
             }
+            if (solanaView != null) {
+                try { windowManager.removeView(solanaView); } catch (Exception ignored) {}
+            }
             if (particleLinkView != null) {
                 try { windowManager.removeView(particleLinkView); } catch (Exception ignored) {}
             }
@@ -210,6 +223,7 @@ public class HedgehogOverlayService extends Service {
         hedgehogView = LayoutInflater.from(this).inflate(R.layout.overlay_hedgehog, null);
         bubbleView = LayoutInflater.from(this).inflate(R.layout.overlay_bubble, null);
         browserView = LayoutInflater.from(this).inflate(R.layout.overlay_browser, null);
+        solanaView = LayoutInflater.from(this).inflate(R.layout.overlay_solana, null);
         edgeTabView = buildEdgeTabView();
         particleLinkView = new ParticleLinkView(this);
 
@@ -248,6 +262,17 @@ public class HedgehogOverlayService extends Service {
         browserParams.gravity = Gravity.TOP | Gravity.START;
         browserParams.x = dp(120);
         browserParams.y = dp(120);
+        solanaParams = new WindowManager.LayoutParams(
+            WindowManager.LayoutParams.WRAP_CONTENT,
+            WindowManager.LayoutParams.WRAP_CONTENT,
+            overlayType,
+            WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS
+                | WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL,
+            PixelFormat.TRANSLUCENT
+        );
+        solanaParams.gravity = Gravity.TOP | Gravity.START;
+        solanaParams.x = dp(132);
+        solanaParams.y = dp(132);
         edgeTabParams = new WindowManager.LayoutParams(
             dp(EDGE_TAB_WIDTH_DP),
             dp(EDGE_TAB_HEIGHT_DP),
@@ -273,10 +298,12 @@ public class HedgehogOverlayService extends Service {
 
         setupBubbleUi();
         setupBrowserUi();
+        setupSolanaUi();
         setupQuickActionsUi();
         setupDragAndTap();
 
         windowManager.addView(browserView, browserParams);
+        windowManager.addView(solanaView, solanaParams);
         windowManager.addView(particleLinkView, particleLinkParams);
         windowManager.addView(bubbleView, bubbleParams);
         windowManager.addView(hedgehogView, hedgehogParams);
@@ -284,10 +311,13 @@ public class HedgehogOverlayService extends Service {
         particleLinkView.setVisibility(View.GONE);
         browserView.setVisibility(View.GONE);
         browserVisible = false;
+        solanaView.setVisibility(View.GONE);
+        solanaVisible = false;
         bubbleView.setVisibility(View.GONE);
         edgeTabView.setVisibility(View.GONE);
         chatClient = new HitomiCloudChatClient(this);
         termuxCommandBridge = new TermuxCommandBridge(this);
+        solanaWalletClient = new SolanaWalletClient(this);
         initSpeechRecognizer();
         SupabaseAuthManager auth = new SupabaseAuthManager(this);
         if (auth.isSignedIn()) {
@@ -335,6 +365,27 @@ public class HedgehogOverlayService extends Service {
         }
     }
 
+    private void setupSolanaUi() {
+        if (solanaView == null) return;
+        TextView title = solanaView.findViewById(R.id.hitomiSolanaTitleText);
+        solanaWalletNameInput = solanaView.findViewById(R.id.hitomiSolanaWalletName);
+        solanaWalletAddressInput = solanaView.findViewById(R.id.hitomiSolanaWalletAddress);
+        solanaStatusView = solanaView.findViewById(R.id.hitomiSolanaStatus);
+        ImageButton close = solanaView.findViewById(R.id.hitomiSolanaClose);
+        View dragHandle = solanaView.findViewById(R.id.hitomiSolanaTitlePill);
+        View save = solanaView.findViewById(R.id.hitomiSolanaSave);
+        if (title != null) title.setText("Solana");
+        populateStoredSolanaWalletIntoWindow();
+        if (close != null) close.setOnClickListener(v -> {
+            solanaVisible = false;
+            solanaView.setVisibility(View.GONE);
+        });
+        if (dragHandle != null) setupSolanaDrag(dragHandle);
+        if (save != null) {
+            save.setOnClickListener(v -> saveSolanaWalletFromWindow());
+        }
+    }
+
     private void showHitomiBrowserForUrl(String rawUrl) {
         if (browserView == null || browserParams == null || hitomiBrowserWebView == null) return;
         String url = normalizeBrowserUrl(rawUrl);
@@ -351,6 +402,102 @@ public class HedgehogOverlayService extends Service {
         safeUpdate(browserView, browserParams);
         if (browserUrlView != null) browserUrlView.setText(url);
         hitomiBrowserWebView.loadUrl(url);
+    }
+
+    private void showSolanaWindow(boolean randomized) {
+        if (solanaView == null || solanaParams == null) return;
+        boolean firstShow = !solanaVisible || solanaView.getVisibility() != View.VISIBLE;
+        if (firstShow) {
+            positionSolanaNearHedgehog(randomized);
+        }
+        populateStoredSolanaWalletIntoWindow();
+        solanaVisible = true;
+        solanaView.setVisibility(View.VISIBLE);
+        if (firstShow) {
+            solanaView.setAlpha(0f);
+            solanaView.setScaleX(0.9f);
+            solanaView.setScaleY(0.9f);
+            solanaView.animate()
+                .alpha(1f)
+                .scaleX(1f)
+                .scaleY(1f)
+                .setDuration(220L)
+                .start();
+        }
+        safeUpdate(solanaView, solanaParams);
+    }
+
+    private void positionSolanaNearHedgehog(boolean randomized) {
+        if (hedgehogParams == null || solanaParams == null) return;
+        int screenW = getScreenWidth();
+        int screenH = getScreenHeight();
+        int solanaW = (solanaView != null && solanaView.getWidth() > 0) ? solanaView.getWidth() : dp(250);
+        int solanaH = (solanaView != null && solanaView.getHeight() > 0) ? solanaView.getHeight() : dp(220);
+        int gap = dp(10);
+        int[] xCandidates = new int[] {
+            hedgehogParams.x + dp(HEDGEHOG_TOUCH_BOX_DP) + gap,
+            hedgehogParams.x - solanaW - gap
+        };
+        int[] yCandidates = new int[] {
+            hedgehogParams.y - dp(16),
+            hedgehogParams.y + dp(10),
+            hedgehogParams.y - solanaH + dp(64)
+        };
+        int desiredX = xCandidates[0];
+        int desiredY = yCandidates[0];
+        if (randomized) {
+            desiredX = xCandidates[(int) Math.floor(Math.random() * xCandidates.length)];
+            desiredY = yCandidates[(int) Math.floor(Math.random() * yCandidates.length)];
+        } else if (desiredX + solanaW > screenW - dp(8)) {
+            desiredX = xCandidates[1];
+        }
+        solanaParams.x = clamp(desiredX, dp(4), Math.max(dp(4), screenW - solanaW - dp(4)));
+        solanaParams.y = clamp(desiredY, 0, Math.max(0, screenH - solanaH));
+    }
+
+    private void populateStoredSolanaWalletIntoWindow() {
+        if (solanaWalletClient == null) solanaWalletClient = new SolanaWalletClient(this);
+        SolanaWalletClient.StoredWallet wallet = solanaWalletClient.getStoredWallet();
+        if (solanaWalletNameInput != null) {
+            solanaWalletNameInput.setText(wallet == null ? "" : wallet.name);
+        }
+        if (solanaWalletAddressInput != null) {
+            solanaWalletAddressInput.setText(wallet == null ? "" : wallet.address);
+        }
+        if (solanaStatusView != null) {
+            solanaStatusView.setText(wallet == null
+                ? "Hitomi stores this locally on your phone for read-only balance and transaction checks."
+                : "Stored wallet ready. Hitomi can use it for read-only balance and recent transaction checks.");
+        }
+    }
+
+    private void saveSolanaWalletFromWindow() {
+        if (solanaWalletClient == null) solanaWalletClient = new SolanaWalletClient(this);
+        String walletName = solanaWalletNameInput == null ? "" : String.valueOf(solanaWalletNameInput.getText()).trim();
+        String walletAddress = solanaWalletAddressInput == null ? "" : String.valueOf(solanaWalletAddressInput.getText()).trim();
+        if (!SolanaWalletClient.isProbablySolanaAddress(walletAddress)) {
+            if (solanaStatusView != null) {
+                solanaStatusView.setText("That wallet address does not look like a valid Solana public address yet.");
+            }
+            Toast.makeText(this, "Enter a valid Solana public address.", Toast.LENGTH_SHORT).show();
+            return;
+        }
+        solanaWalletClient.saveStoredWallet(walletName, walletAddress);
+        if (solanaStatusView != null) {
+            solanaStatusView.setText("Saved locally. Hitomi can use this wallet for read-only checks now.");
+        }
+        solanaVisible = false;
+        if (solanaView != null) solanaView.setVisibility(View.GONE);
+        appendTranscriptLine("Hitomi: I saved your Solana wallet, fren. Ask me about balance or recent transactions any time.");
+        renderTranscript(false);
+        if (pendingWalletPrompt != null && !pendingWalletPrompt.trim().isEmpty()) {
+            String pending = pendingWalletPrompt.trim();
+            pendingWalletPrompt = "";
+            if (bubbleInputView != null) bubbleInputView.setText(pending);
+            Toast.makeText(this, "Wallet saved. Tap send again and I'll check it.", Toast.LENGTH_SHORT).show();
+        } else {
+            Toast.makeText(this, "Saved Solana wallet for Hitomi.", Toast.LENGTH_SHORT).show();
+        }
     }
 
     private void positionBrowserNearHedgehog(boolean randomized) {
@@ -423,6 +570,23 @@ public class HedgehogOverlayService extends Service {
         if (url.startsWith("http://") || url.startsWith("https://")) return url;
         if (url.matches("^[a-zA-Z][a-zA-Z0-9+.-]*:.*$")) return null;
         return "https://" + url;
+    }
+
+    private boolean shouldPromptForStoredWallet(String message) {
+        String text = message == null ? "" : message.trim().toLowerCase();
+        if (text.isEmpty()) return false;
+        boolean walletRelated =
+            text.contains("solana")
+                || text.contains("wallet")
+                || text.contains("balance")
+                || text.contains("transaction")
+                || text.contains("transactions")
+                || text.contains("lamports")
+                || text.contains("signature")
+                || text.matches(".*\\bsol\\b.*");
+        if (!walletRelated) return false;
+        if (solanaWalletClient == null) solanaWalletClient = new SolanaWalletClient(this);
+        return !solanaWalletClient.hasStoredWallet();
     }
 
     private void requestBrowserSnapshot(String rawUrl, BrowserReadCallback callback) {
@@ -559,6 +723,36 @@ public class HedgehogOverlayService extends Service {
                     browserParams.x = clamp(downPos[0] + dx, 0, Math.max(0, getScreenWidth() - dp(240)));
                     browserParams.y = clamp(downPos[1] + dy, 0, Math.max(0, getScreenHeight() - dp(190)));
                     safeUpdate(browserView, browserParams);
+                    return true;
+                case MotionEvent.ACTION_UP:
+                case MotionEvent.ACTION_CANCEL:
+                    return true;
+                default:
+                    return false;
+            }
+        });
+    }
+
+    private void setupSolanaDrag(View dragHandle) {
+        final float[] downRaw = new float[2];
+        final int[] downPos = new int[2];
+        dragHandle.setOnTouchListener((v, event) -> {
+            if (solanaParams == null || solanaView == null) return false;
+            switch (event.getActionMasked()) {
+                case MotionEvent.ACTION_DOWN:
+                    downRaw[0] = event.getRawX();
+                    downRaw[1] = event.getRawY();
+                    downPos[0] = solanaParams.x;
+                    downPos[1] = solanaParams.y;
+                    return true;
+                case MotionEvent.ACTION_MOVE:
+                    int dx = (int) (event.getRawX() - downRaw[0]);
+                    int dy = (int) (event.getRawY() - downRaw[1]);
+                    int width = (solanaView.getWidth() > 0) ? solanaView.getWidth() : dp(250);
+                    int height = (solanaView.getHeight() > 0) ? solanaView.getHeight() : dp(220);
+                    solanaParams.x = clamp(downPos[0] + dx, 0, Math.max(0, getScreenWidth() - width));
+                    solanaParams.y = clamp(downPos[1] + dy, 0, Math.max(0, getScreenHeight() - height));
+                    safeUpdate(solanaView, solanaParams);
                     return true;
                 case MotionEvent.ACTION_UP:
                 case MotionEvent.ACTION_CANCEL:
@@ -1203,6 +1397,14 @@ public class HedgehogOverlayService extends Service {
         String msg = bubbleInputView.getText().toString().trim();
         if (msg.isEmpty()) return;
         bubbleInputView.setText("");
+        if (shouldPromptForStoredWallet(msg)) {
+            appendTranscriptLine("You: " + msg);
+            appendTranscriptLine("Hitomi: I need your Solana wallet first, fren, so I popped open a purple Solana window for you. Fill in the wallet name and address, then tap OK.");
+            pendingWalletPrompt = msg;
+            renderTranscript(false);
+            showSolanaWindow(true);
+            return;
+        }
         scheduleKeyboardAvoidanceHop();
         appendTranscriptLine("You: " + msg);
         chatInFlight = true;
@@ -1256,6 +1458,18 @@ public class HedgehogOverlayService extends Service {
                     mainHandler.post(() -> appendTranscriptLine("Hitomi: " + visibleFollowup));
                 }
             }
+            if (parsedReply.solanaToolName != null && !parsedReply.solanaToolName.isEmpty()) {
+                boolean forceRefresh = ANDROID_SOLANA_REFRESH_TOOL_NAME.equals(parsedReply.solanaToolName);
+                String followup = runSolanaWalletFollowup(finalUserName, forceRefresh);
+                if (followup != null && !followup.trim().isEmpty()) {
+                    try {
+                        chatHistory.put(new JSONObject().put("role", "assistant").put("content", followup));
+                    } catch (Exception ignored) {
+                    }
+                    final String visibleFollowup = followup.trim();
+                    mainHandler.post(() -> appendTranscriptLine("Hitomi: " + visibleFollowup));
+                }
+            }
             mainHandler.post(() -> {
                 chatInFlight = false;
                 renderTranscript(false);
@@ -1275,11 +1489,12 @@ public class HedgehogOverlayService extends Service {
 
     private ParsedAssistantReply parseAssistantReply(String raw) {
         String source = raw == null ? "" : raw.trim();
-        if (source.isEmpty()) return new ParsedAssistantReply("", null, null, null);
+        if (source.isEmpty()) return new ParsedAssistantReply("", null, null, null, null);
         StringBuilder visible = new StringBuilder();
         List<String> browserUrls = new ArrayList<>();
         List<String> browserReadUrls = new ArrayList<>();
         List<String> termuxCommands = new ArrayList<>();
+        List<String> solanaActions = new ArrayList<>();
         int idx = 0;
         while (idx < source.length()) {
             int start = source.indexOf("{{tool:", idx);
@@ -1294,7 +1509,7 @@ public class HedgehogOverlayService extends Service {
                 break;
             }
             String tokenBody = source.substring(start + 2, end).trim();
-            maybeExtractAndroidTool(tokenBody, browserUrls, browserReadUrls, termuxCommands);
+            maybeExtractAndroidTool(tokenBody, browserUrls, browserReadUrls, termuxCommands, solanaActions);
             idx = end + 2;
         }
         String cleaned = visible.toString()
@@ -1310,15 +1525,21 @@ public class HedgehogOverlayService extends Service {
         if (cleaned.isEmpty() && !termuxCommands.isEmpty()) {
             cleaned = "Running a Termux command for you now.";
         }
+        if (cleaned.isEmpty() && !solanaActions.isEmpty()) {
+            cleaned = ANDROID_SOLANA_REFRESH_TOOL_NAME.equals(solanaActions.get(0))
+                ? "Refreshing your connected Solana wallet now."
+                : "Checking your connected Solana wallet now.";
+        }
         return new ParsedAssistantReply(
             cleaned,
             browserUrls.isEmpty() ? null : browserUrls.get(0),
             browserReadUrls.isEmpty() ? null : browserReadUrls.get(0),
-            termuxCommands.isEmpty() ? null : termuxCommands.get(0)
+            termuxCommands.isEmpty() ? null : termuxCommands.get(0),
+            solanaActions.isEmpty() ? null : solanaActions.get(0)
         );
     }
 
-    private void maybeExtractAndroidTool(String tokenBody, List<String> browserUrls, List<String> browserReadUrls, List<String> termuxCommands) {
+    private void maybeExtractAndroidTool(String tokenBody, List<String> browserUrls, List<String> browserReadUrls, List<String> termuxCommands, List<String> solanaActions) {
         if (tokenBody == null || !tokenBody.startsWith("tool:")) return;
         String payload = tokenBody.substring("tool:".length());
         String[] parts = payload.split("\\|");
@@ -1327,7 +1548,13 @@ public class HedgehogOverlayService extends Service {
         boolean openOnly = ANDROID_BROWSER_TOOL_NAME.equals(toolName);
         boolean browseRead = ANDROID_BROWSER_BROWSE_TOOL_NAME.equals(toolName);
         boolean termuxExec = ANDROID_TERMUX_EXEC_TOOL_NAME.equals(toolName);
-        if (!openOnly && !browseRead && !termuxExec) return;
+        boolean solanaOverview = ANDROID_SOLANA_OVERVIEW_TOOL_NAME.equals(toolName);
+        boolean solanaRefresh = ANDROID_SOLANA_REFRESH_TOOL_NAME.equals(toolName);
+        if (!openOnly && !browseRead && !termuxExec && !solanaOverview && !solanaRefresh) return;
+        if (solanaOverview || solanaRefresh) {
+            solanaActions.add(toolName);
+            return;
+        }
         for (int i = 1; i < parts.length; i++) {
             String part = parts[i];
             int eq = part.indexOf('=');
@@ -1466,6 +1693,66 @@ public class HedgehogOverlayService extends Service {
             + "Use the shell result to answer the user briefly and honestly.";
     }
 
+    private String runSolanaWalletFollowup(String userName, boolean forceRefresh) {
+        try {
+            if (solanaWalletClient == null) {
+                solanaWalletClient = new SolanaWalletClient(this);
+            }
+            SolanaWalletClient.StoredWallet wallet = solanaWalletClient.getStoredWallet();
+            if (wallet == null || wallet.address.isEmpty()) {
+                mainHandler.post(() -> showSolanaWindow(true));
+                return "I don't have a stored Solana wallet yet, so I opened the purple Solana window for you.";
+            }
+            SolanaWalletClient.WalletSnapshot snapshot = forceRefresh
+                ? solanaWalletClient.refresh(wallet.address)
+                : solanaWalletClient.getOverview(wallet.address);
+            String toolResult = buildSolanaWalletToolResult(snapshot, forceRefresh);
+            try {
+                chatHistory.put(new JSONObject().put("role", "user").put("content", toolResult));
+            } catch (Exception ignored) {
+            }
+            return chatClient.send(chatHistory, userName);
+        } catch (Exception e) {
+            return "I hit a snag checking your Solana wallet: " + safeMessage(e);
+        }
+    }
+
+    private String buildSolanaWalletToolResult(SolanaWalletClient.WalletSnapshot snapshot, boolean refreshed) {
+        String address = snapshot == null ? "" : safe(snapshot.address);
+        String fetchedAt = snapshot == null ? "" : safe(snapshot.fetchedAt);
+        String rpcSource = snapshot == null ? "" : safe(snapshot.rpcSource);
+        String lastError = snapshot == null ? "" : safe(snapshot.lastError);
+        long lamports = snapshot == null ? 0L : snapshot.lamports;
+        double balanceSol = snapshot == null ? 0d : snapshot.balanceSol;
+        JSONArray txs = snapshot == null ? null : snapshot.recentTransactions;
+        StringBuilder out = new StringBuilder();
+        out.append("[ANDROID_SOLANA_WALLET]\n");
+        out.append("Address: ").append(address.isEmpty() ? "(none)" : address).append("\n");
+        out.append("Chain: solana\n");
+        out.append("Balance SOL: ").append(balanceSol).append("\n");
+        out.append("Lamports: ").append(lamports).append("\n");
+        out.append("Fetched at: ").append(fetchedAt.isEmpty() ? "(not fetched)" : fetchedAt).append("\n");
+        out.append("RPC source: ").append(rpcSource.isEmpty() ? "(none)" : rpcSource).append("\n");
+        if (refreshed) out.append("Refresh: true\n");
+        if (!lastError.isEmpty()) out.append("Error: ").append(lastError).append("\n");
+        if (txs == null || txs.length() == 0) {
+            out.append("Recent transactions: none\n");
+        } else {
+            out.append("Recent transactions:\n");
+            for (int i = 0; i < txs.length() && i < 5; i++) {
+                JSONObject tx = txs.optJSONObject(i);
+                if (tx == null) continue;
+                out.append("- signature=").append(safe(tx.optString("signature", ""))).append("\n");
+                out.append("  status=").append(safe(tx.optString("confirmationStatus", ""))).append("\n");
+                out.append("  block_time=").append(safe(tx.optString("blockTime", ""))).append("\n");
+                out.append("  net_sol_change=").append(tx.optDouble("netSol", 0d)).append("\n");
+            }
+        }
+        out.append("[/ANDROID_SOLANA_WALLET]\n");
+        out.append("Use this wallet result to answer the user briefly and honestly. Do not emit another tool call unless the user explicitly asks to refresh again.");
+        return out.toString();
+    }
+
     private String getBlockedTermuxCommandReason(String command) {
         String c = command == null ? "" : command.trim().toLowerCase();
         if (c.isEmpty()) return "empty command";
@@ -1506,13 +1793,15 @@ public class HedgehogOverlayService extends Service {
         final String browserUrl;
         final String browserReadUrl;
         final String termuxCommand;
-        ParsedAssistantReply(String visibleText, String browserUrl, String browserReadUrl, String termuxCommand) {
+        final String solanaToolName;
+        ParsedAssistantReply(String visibleText, String browserUrl, String browserReadUrl, String termuxCommand, String solanaToolName) {
             this.visibleText = (visibleText == null || visibleText.trim().isEmpty())
                 ? "Okay."
                 : visibleText.trim();
             this.browserUrl = browserUrl;
             this.browserReadUrl = browserReadUrl;
             this.termuxCommand = termuxCommand;
+            this.solanaToolName = solanaToolName;
         }
     }
 
@@ -1898,6 +2187,10 @@ public class HedgehogOverlayService extends Service {
             true,
             this::updatePinnedMicVisibility
         );
+    }
+
+    private static String safe(String value) {
+        return value == null ? "" : value.trim();
     }
 
     private static String safeMessage(Exception e) {

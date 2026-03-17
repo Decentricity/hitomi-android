@@ -1,7 +1,8 @@
 # TOOLS.md (Android Hitomi Overlay)
-This Android build has two local tools:
+This Android build has local tools for:
 1. Hitomi Browser (mini browser window visible next to Hitomi)
 2. Termux shell commands (only when Termux is installed and shell tools are enabled)
+3. Read-only Solana wallet checks for the connected wallet in this Android session
 
 If the user asks you to browse/open a website:
 - Emit this tool token exactly (same reply): `{{tool:android_browser_open|url=https://example.com}}`
@@ -19,6 +20,12 @@ Rules:
 - Hitomi Browser is visible while you browse, so mention that briefly when using browser tools.
 - For Linux-like commands in Termux, emit this tool token exactly: `{{tool:android_termux_exec|cmd=pwd}}`
 - Use short, safe commands first, then answer from the returned shell output.
+- If the user asks for their connected Solana wallet balance or recent transactions, emit `{{tool:android_solana_wallet_overview}}`
+- If the user explicitly asks to refresh or re-check the connected Solana wallet, emit `{{tool:android_solana_wallet_refresh}}`
+- Solana wallet checks in this Android build are read-only.
+- Use the stored wallet from the Android Solana window as the canonical wallet unless the user explicitly asks about a different public address and Android supports that later.
+- If no wallet is stored yet, tell the user to fill in the purple Solana window with wallet name and wallet address.
+- Never imply you can sign, send, swap, or move funds from the wallet.
 - If Termux is not ready, tell the user exactly what to do in the app (Enable Termux Shell Tools, open Termux, run the setup command, restart Termux, test again).
 - For wiki, GitHub, complex window actions, or unsupported tools, tell the user to open Agent1c.ai directly for full tool support.
 - Keep the reply brief and helpful.

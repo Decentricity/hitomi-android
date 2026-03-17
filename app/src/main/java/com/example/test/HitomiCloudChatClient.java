@@ -19,12 +19,14 @@ public class HitomiCloudChatClient {
 
     private final Context appContext;
     private final SupabaseAuthManager authManager;
+    private final SolanaWalletClient solanaWalletClient;
     private final String soulTemplate;
     private final String toolsText;
 
     public HitomiCloudChatClient(Context context) {
         this.appContext = context.getApplicationContext();
         this.authManager = new SupabaseAuthManager(appContext);
+        this.solanaWalletClient = new SolanaWalletClient(appContext);
         this.soulTemplate = readRawText(appContext, R.raw.soul_md);
         this.toolsText = readRawText(appContext, R.raw.tools_md);
     }
@@ -86,7 +88,19 @@ public class HitomiCloudChatClient {
 
     private String buildSystemPrompt(String userName) {
         String safeName = (userName == null || userName.trim().isEmpty()) ? "friend" : userName.trim();
-        return soulTemplate.replace("{user_name}", safeName) + "\n\n" + toolsText;
+        StringBuilder prompt = new StringBuilder();
+        prompt.append(soulTemplate.replace("{user_name}", safeName))
+            .append("\n\n")
+            .append(toolsText);
+        SolanaWalletClient.StoredWallet storedWallet = solanaWalletClient.getStoredWallet();
+        String walletAddress = storedWallet == null ? "" : storedWallet.address;
+        if (walletAddress != null && !walletAddress.trim().isEmpty()) {
+            prompt.append("\n\n")
+                .append("Runtime note: the user is connected with Solana wallet \"")
+                .append(walletAddress.trim())
+                .append("\". You may inspect balance and recent transactions when needed.");
+        }
+        return prompt.toString();
     }
 
     private static String readRawText(Context context, int resId) {

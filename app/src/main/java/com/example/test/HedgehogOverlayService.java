@@ -76,6 +76,9 @@ public class HedgehogOverlayService extends Service {
     private static final int EDGE_TAB_TOUCH_HEIGHT_DP = 148;
     private static final int EDGE_TAB_VISIBLE_SLICE_DP = 10;
     private static final int EDGE_TAB_RESTORE_SWIPE_DP = 18;
+    private static final int EXIT_TARGET_SIZE_DP = 76;
+    private static final int EXIT_TARGET_MARGIN_BOTTOM_DP = 18;
+    private static final int TERMINAL_TRANSCRIPT_MAX_CHARS = 12000;
     private static final String ANDROID_BROWSER_TOOL_NAME = "android_browser_open";
     private static final String ANDROID_BROWSER_BROWSE_TOOL_NAME = "android_browser_browse";
     private static final String ANDROID_TERMUX_EXEC_TOOL_NAME = "android_termux_exec";
@@ -87,17 +90,24 @@ public class HedgehogOverlayService extends Service {
     private View bubbleView;
     private View browserView;
     private View solanaView;
+    private View terminalView;
+    private TextView exitTargetView;
     private TextView edgeTabView;
     private ParticleLinkView particleLinkView;
     private WindowManager.LayoutParams hedgehogParams;
     private WindowManager.LayoutParams bubbleParams;
     private WindowManager.LayoutParams browserParams;
     private WindowManager.LayoutParams solanaParams;
+    private WindowManager.LayoutParams terminalParams;
     private WindowManager.LayoutParams edgeTabParams;
     private WindowManager.LayoutParams particleLinkParams;
+    private WindowManager.LayoutParams exitTargetParams;
     private boolean bubbleVisible = false;
     private boolean browserVisible = false;
     private boolean solanaVisible = false;
+    private boolean terminalVisible = false;
+    private boolean exitTargetVisible = false;
+    private boolean dragOverExitTarget = false;
     private Runnable browserSummonParticlesStop;
     private final ExecutorService chatExecutor = Executors.newSingleThreadExecutor();
     private final Handler mainHandler = new Handler(Looper.getMainLooper());
@@ -105,10 +115,13 @@ public class HedgehogOverlayService extends Service {
     private HitomiCloudChatClient chatClient;
     private TextView bubbleBodyView;
     private TextView browserUrlView;
+    private TextView terminalStatusView;
+    private TextView terminalTranscriptView;
     private EditText solanaWalletNameInput;
     private EditText solanaWalletAddressInput;
     private TextView solanaStatusView;
     private ScrollView bubbleBodyScrollView;
+    private ScrollView terminalScrollView;
     private View bubbleTailTopView;
     private View bubbleTailBottomView;
     private EditText bubbleInputView;
@@ -116,6 +129,7 @@ public class HedgehogOverlayService extends Service {
     private WebView hitomiBrowserWebView;
     private boolean chatInFlight = false;
     private String transcript = "";
+    private String terminalTranscript = "";
     private boolean keyboardLiftActive = false;
     private int keyboardLiftOriginalY = -1;
     private boolean hedgehogDragging = false;
@@ -206,11 +220,17 @@ public class HedgehogOverlayService extends Service {
             if (solanaView != null) {
                 try { windowManager.removeView(solanaView); } catch (Exception ignored) {}
             }
+            if (terminalView != null) {
+                try { windowManager.removeView(terminalView); } catch (Exception ignored) {}
+            }
             if (particleLinkView != null) {
                 try { windowManager.removeView(particleLinkView); } catch (Exception ignored) {}
             }
             if (edgeTabView != null) {
                 try { windowManager.removeView(edgeTabView); } catch (Exception ignored) {}
+            }
+            if (exitTargetView != null) {
+                try { windowManager.removeView(exitTargetView); } catch (Exception ignored) {}
             }
         }
         if (hitomiBrowserWebView != null) {
@@ -239,8 +259,10 @@ public class HedgehogOverlayService extends Service {
         bubbleView = LayoutInflater.from(this).inflate(R.layout.overlay_bubble, null);
         browserView = LayoutInflater.from(this).inflate(R.layout.overlay_browser, null);
         solanaView = LayoutInflater.from(this).inflate(R.layout.overlay_solana, null);
+        terminalView = LayoutInflater.from(this).inflate(R.layout.overlay_terminal, null);
         edgeTabView = buildEdgeTabView();
         particleLinkView = new ParticleLinkView(this);
+        exitTargetView = buildExitTargetView();
 
         hedgehogParams = new WindowManager.LayoutParams(
             WindowManager.LayoutParams.WRAP_CONTENT,
@@ -288,6 +310,18 @@ public class HedgehogOverlayService extends Service {
         solanaParams.gravity = Gravity.TOP | Gravity.START;
         solanaParams.x = dp(132);
         solanaParams.y = dp(132);
+        terminalParams = new WindowManager.LayoutParams(
+            WindowManager.LayoutParams.WRAP_CONTENT,
+            WindowManager.LayoutParams.WRAP_CONTENT,
+            overlayType,
+            WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS
+                | WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE
+                | WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL,
+            PixelFormat.TRANSLUCENT
+        );
+        terminalParams.gravity = Gravity.TOP | Gravity.START;
+        terminalParams.x = dp(144);
+        terminalParams.y = dp(144);
         edgeTabParams = new WindowManager.LayoutParams(
             dp(EDGE_TAB_TOUCH_WIDTH_DP),
             dp(EDGE_TAB_TOUCH_HEIGHT_DP),
@@ -310,16 +344,30 @@ public class HedgehogOverlayService extends Service {
         particleLinkParams.gravity = Gravity.TOP | Gravity.START;
         particleLinkParams.x = 0;
         particleLinkParams.y = 0;
+        exitTargetParams = new WindowManager.LayoutParams(
+            dp(EXIT_TARGET_SIZE_DP),
+            dp(EXIT_TARGET_SIZE_DP),
+            overlayType,
+            WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS
+                | WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE
+                | WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE,
+            PixelFormat.TRANSLUCENT
+        );
+        exitTargetParams.gravity = Gravity.TOP | Gravity.START;
+        positionExitTarget();
 
         setupBubbleUi();
         setupBrowserUi();
         setupSolanaUi();
+        setupTerminalUi();
         setupQuickActionsUi();
         setupDragAndTap();
 
         windowManager.addView(browserView, browserParams);
         windowManager.addView(solanaView, solanaParams);
+        windowManager.addView(terminalView, terminalParams);
         windowManager.addView(particleLinkView, particleLinkParams);
+        windowManager.addView(exitTargetView, exitTargetParams);
         windowManager.addView(bubbleView, bubbleParams);
         windowManager.addView(hedgehogView, hedgehogParams);
         windowManager.addView(edgeTabView, edgeTabParams);
@@ -328,8 +376,13 @@ public class HedgehogOverlayService extends Service {
         browserVisible = false;
         solanaView.setVisibility(View.GONE);
         solanaVisible = false;
+        terminalView.setVisibility(View.GONE);
+        terminalVisible = false;
         bubbleView.setVisibility(View.GONE);
         edgeTabView.setVisibility(View.GONE);
+        exitTargetView.setVisibility(View.GONE);
+        exitTargetVisible = false;
+        dragOverExitTarget = false;
         chatClient = new HitomiCloudChatClient(this);
         termuxCommandBridge = new TermuxCommandBridge(this);
         solanaWalletClient = new SolanaWalletClient(this);
@@ -337,10 +390,11 @@ public class HedgehogOverlayService extends Service {
         SupabaseAuthManager auth = new SupabaseAuthManager(this);
         if (auth.isSignedIn()) {
             String display = String.valueOf(auth.getDisplayName() == null ? "" : auth.getDisplayName()).trim();
-            if (display.startsWith("@") && display.length() > 1) {
-                transcript = "Hitomi: I'm a hedgey-hog! Hello " + display;
+            String helloName = display.isEmpty() ? "friend" : display;
+            if (helloName.startsWith("@") && helloName.length() > 1) {
+                transcript = "Hitomi: I'm a hedgey-hog! Hello " + helloName + ", I can browse, use Termux commands, and see Solana addresses for you!\nLong-press on me for other options!";
             } else {
-                transcript = "Hitomi: Hello, I'm a hedgey-hog!";
+                transcript = "Hitomi: I'm a hedgey-hog! Hello " + helloName + ", I can browse, use Termux commands, and see Solana addresses for you!\nLong-press on me for other options!";
             }
         } else {
             transcript = "Hitomi: Hi! I'm Hitomi, your tiny hedgehog friend. Sign in in the app, then we can chat here.";
@@ -352,12 +406,17 @@ public class HedgehogOverlayService extends Service {
         if (windowManager == null) return;
         if (hedgehogHiddenAtEdge) {
             positionEdgeTabForHiddenState();
+            positionExitTarget();
             if (edgeTabView != null) {
                 edgeTabView.setVisibility(View.VISIBLE);
                 safeUpdate(edgeTabView, edgeTabParams);
             }
+            if (exitTargetVisible && exitTargetView != null) {
+                safeUpdate(exitTargetView, exitTargetParams);
+            }
             return;
         }
+        positionExitTarget();
         if (hedgehogParams != null && hedgehogView != null) {
             hedgehogParams.x = clamp(hedgehogParams.x, 0, Math.max(0, getScreenWidth() - dp(HEDGEHOG_TOUCH_BOX_DP)));
             hedgehogParams.y = clamp(hedgehogParams.y, 0, Math.max(0, getScreenHeight() - dp(HEDGEHOG_TOUCH_BOX_DP)));
@@ -373,6 +432,23 @@ public class HedgehogOverlayService extends Service {
             browserParams.x = clamp(browserParams.x, 0, Math.max(0, getScreenWidth() - browserW));
             browserParams.y = clamp(browserParams.y, 0, Math.max(0, getScreenHeight() - browserH));
             safeUpdate(browserView, browserParams);
+        }
+        if (solanaVisible && solanaParams != null && solanaView != null) {
+            int solanaW = (solanaView.getWidth() > 0) ? solanaView.getWidth() : dp(250);
+            int solanaH = (solanaView.getHeight() > 0) ? solanaView.getHeight() : dp(220);
+            solanaParams.x = clamp(solanaParams.x, 0, Math.max(0, getScreenWidth() - solanaW));
+            solanaParams.y = clamp(solanaParams.y, 0, Math.max(0, getScreenHeight() - solanaH));
+            safeUpdate(solanaView, solanaParams);
+        }
+        if (terminalVisible && terminalParams != null && terminalView != null) {
+            int terminalW = (terminalView.getWidth() > 0) ? terminalView.getWidth() : dp(268);
+            int terminalH = (terminalView.getHeight() > 0) ? terminalView.getHeight() : dp(220);
+            terminalParams.x = clamp(terminalParams.x, 0, Math.max(0, getScreenWidth() - terminalW));
+            terminalParams.y = clamp(terminalParams.y, 0, Math.max(0, getScreenHeight() - terminalH));
+            safeUpdate(terminalView, terminalParams);
+        }
+        if (exitTargetVisible && exitTargetView != null && exitTargetParams != null) {
+            safeUpdate(exitTargetView, exitTargetParams);
         }
     }
 
@@ -429,6 +505,26 @@ public class HedgehogOverlayService extends Service {
         }
     }
 
+    private void setupTerminalUi() {
+        if (terminalView == null) return;
+        TextView title = terminalView.findViewById(R.id.hitomiTerminalTitleText);
+        terminalStatusView = terminalView.findViewById(R.id.hitomiTerminalStatus);
+        terminalTranscriptView = terminalView.findViewById(R.id.hitomiTerminalTranscript);
+        terminalScrollView = terminalView.findViewById(R.id.hitomiTerminalScroll);
+        ImageButton close = terminalView.findViewById(R.id.hitomiTerminalClose);
+        View dragHandle = terminalView.findViewById(R.id.hitomiTerminalTitlePill);
+        if (title != null) title.setText("Terminal");
+        if (terminalStatusView != null) terminalStatusView.setText("Idle");
+        renderTerminalTranscript();
+        if (close != null) {
+            close.setOnClickListener(v -> {
+                terminalVisible = false;
+                terminalView.setVisibility(View.GONE);
+            });
+        }
+        if (dragHandle != null) setupTerminalDrag(dragHandle);
+    }
+
     private void showHitomiBrowserForUrl(String rawUrl) {
         if (browserView == null || browserParams == null || hitomiBrowserWebView == null) return;
         String url = normalizeBrowserUrl(rawUrl);
@@ -470,6 +566,29 @@ public class HedgehogOverlayService extends Service {
         safeUpdate(solanaView, solanaParams);
     }
 
+    private void showTerminalWindow(boolean randomized) {
+        if (terminalView == null || terminalParams == null) return;
+        boolean firstShow = !terminalVisible || terminalView.getVisibility() != View.VISIBLE;
+        if (firstShow) {
+            positionTerminalNearHedgehog(randomized);
+        }
+        terminalVisible = true;
+        terminalView.setVisibility(View.VISIBLE);
+        if (firstShow) {
+            terminalView.setAlpha(0f);
+            terminalView.setScaleX(0.9f);
+            terminalView.setScaleY(0.9f);
+            terminalView.animate()
+                .alpha(1f)
+                .scaleX(1f)
+                .scaleY(1f)
+                .setDuration(220L)
+                .start();
+        }
+        safeUpdate(terminalView, terminalParams);
+        renderTerminalTranscript();
+    }
+
     private void positionSolanaNearHedgehog(boolean randomized) {
         if (hedgehogParams == null || solanaParams == null) return;
         int screenW = getScreenWidth();
@@ -496,6 +615,34 @@ public class HedgehogOverlayService extends Service {
         }
         solanaParams.x = clamp(desiredX, dp(4), Math.max(dp(4), screenW - solanaW - dp(4)));
         solanaParams.y = clamp(desiredY, 0, Math.max(0, screenH - solanaH));
+    }
+
+    private void positionTerminalNearHedgehog(boolean randomized) {
+        if (hedgehogParams == null || terminalParams == null) return;
+        int screenW = getScreenWidth();
+        int screenH = getScreenHeight();
+        int terminalW = (terminalView != null && terminalView.getWidth() > 0) ? terminalView.getWidth() : dp(268);
+        int terminalH = (terminalView != null && terminalView.getHeight() > 0) ? terminalView.getHeight() : dp(220);
+        int gap = dp(10);
+        int[] xCandidates = new int[] {
+            hedgehogParams.x + dp(HEDGEHOG_TOUCH_BOX_DP) + gap,
+            hedgehogParams.x - terminalW - gap
+        };
+        int[] yCandidates = new int[] {
+            hedgehogParams.y - dp(8),
+            hedgehogParams.y + dp(24),
+            hedgehogParams.y - terminalH + dp(72)
+        };
+        int desiredX = xCandidates[0];
+        int desiredY = yCandidates[0];
+        if (randomized) {
+            desiredX = xCandidates[(int) Math.floor(Math.random() * xCandidates.length)];
+            desiredY = yCandidates[(int) Math.floor(Math.random() * yCandidates.length)];
+        } else if (desiredX + terminalW > screenW - dp(8)) {
+            desiredX = xCandidates[1];
+        }
+        terminalParams.x = clamp(desiredX, dp(4), Math.max(dp(4), screenW - terminalW - dp(4)));
+        terminalParams.y = clamp(desiredY, 0, Math.max(0, screenH - terminalH));
     }
 
     private void populateStoredSolanaWalletIntoWindow() {
@@ -806,6 +953,139 @@ public class HedgehogOverlayService extends Service {
         });
     }
 
+    private void setupTerminalDrag(View dragHandle) {
+        final float[] downRaw = new float[2];
+        final int[] downPos = new int[2];
+        dragHandle.setOnTouchListener((v, event) -> {
+            if (terminalParams == null || terminalView == null) return false;
+            switch (event.getActionMasked()) {
+                case MotionEvent.ACTION_DOWN:
+                    downRaw[0] = event.getRawX();
+                    downRaw[1] = event.getRawY();
+                    downPos[0] = terminalParams.x;
+                    downPos[1] = terminalParams.y;
+                    return true;
+                case MotionEvent.ACTION_MOVE:
+                    int dx = (int) (event.getRawX() - downRaw[0]);
+                    int dy = (int) (event.getRawY() - downRaw[1]);
+                    int width = (terminalView.getWidth() > 0) ? terminalView.getWidth() : dp(268);
+                    int height = (terminalView.getHeight() > 0) ? terminalView.getHeight() : dp(220);
+                    terminalParams.x = clamp(downPos[0] + dx, 0, Math.max(0, getScreenWidth() - width));
+                    terminalParams.y = clamp(downPos[1] + dy, 0, Math.max(0, getScreenHeight() - height));
+                    safeUpdate(terminalView, terminalParams);
+                    return true;
+                case MotionEvent.ACTION_UP:
+                case MotionEvent.ACTION_CANCEL:
+                    return true;
+                default:
+                    return false;
+            }
+        });
+    }
+
+    private void renderTerminalTranscript() {
+        if (terminalTranscriptView != null) {
+            String text = terminalTranscript == null ? "" : terminalTranscript.trim();
+            terminalTranscriptView.setText(text.isEmpty()
+                ? "Hitomi's Termux activity will appear here."
+                : text);
+        }
+        if (terminalScrollView != null) {
+            terminalScrollView.post(() -> terminalScrollView.fullScroll(View.FOCUS_DOWN));
+        }
+    }
+
+    private void appendTerminalBlock(String block) {
+        String trimmed = block == null ? "" : block.trim();
+        if (trimmed.isEmpty()) return;
+        if (terminalTranscript == null || terminalTranscript.trim().isEmpty()) {
+            terminalTranscript = trimmed;
+        } else {
+            terminalTranscript = terminalTranscript.trim() + "\n\n" + trimmed;
+        }
+        if (terminalTranscript.length() > TERMINAL_TRANSCRIPT_MAX_CHARS) {
+            terminalTranscript = terminalTranscript.substring(terminalTranscript.length() - TERMINAL_TRANSCRIPT_MAX_CHARS);
+            int firstBreak = terminalTranscript.indexOf('\n');
+            if (firstBreak > 0 && firstBreak < terminalTranscript.length() - 1) {
+                terminalTranscript = terminalTranscript.substring(firstBreak + 1).trim();
+            }
+        }
+        renderTerminalTranscript();
+    }
+
+    private void setTerminalStatus(String status) {
+        if (terminalStatusView != null) {
+            terminalStatusView.setText(status == null || status.trim().isEmpty() ? "Idle" : status.trim());
+        }
+    }
+
+    private void noteTermuxCommandDispatched(String command) {
+        mainHandler.post(() -> {
+            showTerminalWindow(!terminalVisible);
+            setTerminalStatus("Running in Termux...");
+            appendTerminalBlock("$ " + (command == null ? "" : command.trim()));
+        });
+    }
+
+    private void noteTermuxUnavailable(String command, String state, String recovery) {
+        mainHandler.post(() -> {
+            showTerminalWindow(!terminalVisible);
+            setTerminalStatus("Termux not connected");
+            StringBuilder sb = new StringBuilder();
+            if (command != null && !command.trim().isEmpty()) {
+                sb.append("$ ").append(command.trim()).append("\n");
+            }
+            sb.append("termux not connected");
+            if (recovery != null && !recovery.trim().isEmpty()) {
+                sb.append("\n").append(recovery.trim());
+            }
+            appendTerminalBlock(sb.toString());
+        });
+    }
+
+    private void noteTermuxResult(String command, TermuxCommandBridge.Result result) {
+        mainHandler.post(() -> {
+            showTerminalWindow(!terminalVisible);
+            if (result == null) {
+                setTerminalStatus("No Termux result");
+                appendTerminalBlock("no result returned");
+                return;
+            }
+            String status = result.timedOut
+                ? "Termux timed out"
+                : (result.exitCode == 0 ? "Termux exit 0" : "Termux exit " + result.exitCode);
+            setTerminalStatus(status);
+            String stdout = result.stdout == null ? "" : result.stdout.trim();
+            String stderr = result.stderr == null ? "" : result.stderr.trim();
+            String errMsg = result.errorMessage == null ? "" : result.errorMessage.trim();
+            if ("-1".equals(errMsg)) errMsg = "";
+            StringBuilder sb = new StringBuilder();
+            if (!stdout.isEmpty()) {
+                sb.append(stdout);
+            }
+            if (!stderr.isEmpty()) {
+                if (sb.length() > 0) sb.append("\n");
+                sb.append(stderr);
+            }
+            if (!errMsg.isEmpty()) {
+                if (sb.length() > 0) sb.append("\n");
+                sb.append(errMsg);
+            }
+            if (result.timedOut) {
+                if (sb.length() > 0) sb.append("\n");
+                sb.append("timed out");
+            }
+            if (result.exitCode != 0 && !result.timedOut) {
+                if (sb.length() > 0) sb.append("\n");
+                sb.append("exit ").append(result.exitCode);
+            }
+            if (sb.length() == 0) {
+                sb.append("(no output)");
+            }
+            appendTerminalBlock(sb.toString());
+        });
+    }
+
     private TextView buildEdgeTabView() {
         TextView v = new TextView(this);
         v.setText("");
@@ -849,6 +1129,67 @@ public class HedgehogOverlayService extends Service {
             }
         });
         return v;
+    }
+
+    private TextView buildExitTargetView() {
+        TextView v = new TextView(this);
+        v.setText("X");
+        v.setGravity(Gravity.CENTER);
+        v.setTextSize(24f);
+        v.setTextColor(0xFFF8F8F8);
+        v.setClickable(false);
+        v.setFocusable(false);
+        v.setBackground(buildExitTargetBackground(false));
+        v.setAlpha(0.92f);
+        return v;
+    }
+
+    private Drawable buildExitTargetBackground(boolean active) {
+        GradientDrawable oval = new GradientDrawable();
+        oval.setShape(GradientDrawable.OVAL);
+        oval.setColor(active ? 0xFFE45B5B : 0xCC222222);
+        oval.setStroke(dp(2), active ? 0xFFFFD7D7 : 0xAAFFFFFF);
+        return oval;
+    }
+
+    private void positionExitTarget() {
+        if (exitTargetParams == null) return;
+        int size = dp(EXIT_TARGET_SIZE_DP);
+        exitTargetParams.x = Math.max(0, (getScreenWidth() - size) / 2);
+        exitTargetParams.y = Math.max(0, getScreenHeight() - size - dp(EXIT_TARGET_MARGIN_BOTTOM_DP));
+    }
+
+    private void showExitTarget(boolean show) {
+        if (exitTargetView == null) return;
+        if (show) positionExitTarget();
+        exitTargetVisible = show;
+        if (show) {
+            exitTargetView.setVisibility(View.VISIBLE);
+            safeUpdate(exitTargetView, exitTargetParams);
+        } else {
+            exitTargetView.setVisibility(View.GONE);
+        }
+    }
+
+    private void updateExitTargetHotState(boolean active) {
+        dragOverExitTarget = active;
+        if (exitTargetView == null) return;
+        exitTargetView.setBackground(buildExitTargetBackground(active));
+        exitTargetView.setScaleX(active ? 1.12f : 1f);
+        exitTargetView.setScaleY(active ? 1.12f : 1f);
+        exitTargetView.setAlpha(active ? 1f : 0.92f);
+    }
+
+    private boolean isHedgehogOverExitTarget() {
+        if (hedgehogParams == null || exitTargetParams == null) return false;
+        int hedgehogCenterX = hedgehogParams.x + dp(HEDGEHOG_TOUCH_BOX_DP) / 2;
+        int hedgehogCenterY = hedgehogParams.y + dp(HEDGEHOG_TOUCH_BOX_DP) / 2;
+        int targetCenterX = exitTargetParams.x + dp(EXIT_TARGET_SIZE_DP) / 2;
+        int targetCenterY = exitTargetParams.y + dp(EXIT_TARGET_SIZE_DP) / 2;
+        int dx = hedgehogCenterX - targetCenterX;
+        int dy = hedgehogCenterY - targetCenterY;
+        int radius = dp(54);
+        return dx * dx + dy * dy <= radius * radius;
     }
 
     private Drawable buildEdgeTabBackground(boolean alignRight) {
@@ -913,10 +1254,7 @@ public class HedgehogOverlayService extends Service {
         if (quickSettingsButton != null) {
             quickSettingsButton.setOnClickListener(v -> {
                 showQuickActions(false);
-                Intent open = new Intent(this, MainActivity.class);
-                open.putExtra(MainActivity.EXTRA_FORCE_SHOW_MAIN, true);
-                open.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_SINGLE_TOP | Intent.FLAG_ACTIVITY_CLEAR_TOP);
-                startActivity(open);
+                openMainSettingsWindow();
             });
         }
         if (quickMicButton != null) {
@@ -1312,6 +1650,7 @@ public class HedgehogOverlayService extends Service {
                     }
                     dragging[0] = false;
                     hedgehogDragging = false;
+                    updateExitTargetHotState(false);
                     longPressed[0] = false;
                     downRaw[0] = event.getRawX();
                     downRaw[1] = event.getRawY();
@@ -1331,6 +1670,9 @@ public class HedgehogOverlayService extends Service {
                     int dx = (int) (event.getRawX() - downRaw[0]);
                     int dy = (int) (event.getRawY() - downRaw[1]);
                     if (Math.abs(dx) > 8 || Math.abs(dy) > 8) {
+                        if (!dragging[0]) {
+                            showExitTarget(true);
+                        }
                         dragging[0] = true;
                         hedgehogDragging = true;
                         if (longPressTrigger[0] != null) mainHandler.removeCallbacks(longPressTrigger[0]);
@@ -1342,10 +1684,19 @@ public class HedgehogOverlayService extends Service {
                     safeUpdate(hedgehogView, hedgehogParams);
                     positionEdgeTabForHiddenState();
                     if (bubbleVisible) safeUpdate(bubbleView, bubbleParams);
+                    if (dragging[0]) updateExitTargetHotState(isHedgehogOverExitTarget());
                     return true;
                 case MotionEvent.ACTION_UP:
                     if (longPressTrigger[0] != null) mainHandler.removeCallbacks(longPressTrigger[0]);
                     hedgehogDragging = false;
+                    boolean droppedOnExit = dragging[0] && isHedgehogOverExitTarget();
+                    showExitTarget(false);
+                    updateExitTargetHotState(false);
+                    if (droppedOnExit) {
+                        overlayRunning = false;
+                        stopSelf();
+                        return true;
+                    }
                     if (longPressed[0]) return true;
                     if (!dragging[0]) {
                         if (quickActionsVisible) showQuickActions(false);
@@ -1357,6 +1708,8 @@ public class HedgehogOverlayService extends Service {
                 case MotionEvent.ACTION_CANCEL:
                     if (longPressTrigger[0] != null) mainHandler.removeCallbacks(longPressTrigger[0]);
                     hedgehogDragging = false;
+                    showExitTarget(false);
+                    updateExitTargetHotState(false);
                     return true;
                 default:
                     return false;
@@ -1513,6 +1866,15 @@ public class HedgehogOverlayService extends Service {
             if (view.getWindowToken() != null) windowManager.updateViewLayout(view, lp);
         } catch (Exception ignored) {
         }
+    }
+
+    private void openMainSettingsWindow() {
+        mainHandler.post(() -> {
+            Intent openIntent = new Intent(this, MainActivity.class);
+            openIntent.putExtra(MainActivity.EXTRA_FORCE_SHOW_MAIN, true);
+            openIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_SINGLE_TOP | Intent.FLAG_ACTIVITY_CLEAR_TOP);
+            startActivity(openIntent);
+        });
     }
 
     private Notification buildNotification() {
@@ -1792,8 +2154,20 @@ public class HedgehogOverlayService extends Service {
                 termuxCommandBridge = new TermuxCommandBridge(this);
             }
             if (termuxCommandBridge == null || !termuxCommandBridge.isTermuxInstalled()) {
-                return "I can use Termux shell tools here, but Termux is not installed yet. Please install Termux and Termux:API first, then tap Enable Termux Shell Tools.";
+                openMainSettingsWindow();
+                noteTermuxUnavailable(trimmed, "TERMUX_NOT_INSTALLED", "Install Termux and Termux:API, then connect shell tools from the main settings window.");
+                String toolResult = buildTermuxUnavailableToolResult(
+                    trimmed,
+                    "TERMUX_NOT_INSTALLED",
+                    "Install Termux and Termux:API, then connect shell tools from the main settings window."
+                );
+                try {
+                    chatHistory.put(new JSONObject().put("role", "user").put("content", toolResult));
+                } catch (Exception ignored) {
+                }
+                return chatClient.send(chatHistory, userName);
             }
+            noteTermuxCommandDispatched(trimmed);
             CountDownLatch latch = new CountDownLatch(1);
             final TermuxCommandBridge.Result[] holder = new TermuxCommandBridge.Result[1];
             termuxCommandBridge.runCommand(
@@ -1808,11 +2182,18 @@ public class HedgehogOverlayService extends Service {
             latch.await(18, TimeUnit.SECONDS);
             TermuxCommandBridge.Result result = holder[0];
             if (result == null) {
+                noteTermuxResult(trimmed, null);
                 return "I tried a Termux command, but I did not get a result back in time.";
             }
+            noteTermuxResult(trimmed, result);
             String setupFallback = buildTermuxSetupFallbackIfNeeded(result);
             if (setupFallback != null) {
-                return setupFallback;
+                openMainSettingsWindow();
+                try {
+                    chatHistory.put(new JSONObject().put("role", "user").put("content", setupFallback));
+                } catch (Exception ignored) {
+                }
+                return chatClient.send(chatHistory, userName);
             }
             String toolResult = buildTermuxToolResult(trimmed, result);
             try {
@@ -1835,9 +2216,29 @@ public class HedgehogOverlayService extends Service {
                 || combined.contains("termux.properties")
                 || combined.contains("runcommandservice requires");
         if (!needsExternalAppsSetup) return null;
-        return "I can run Termux commands here, fren, but Termux still needs one setup step. "
-            + "In the app, tap Enable Termux Shell Tools, tap Open Termux, run the setup command shown in the code box, "
-            + "then fully close and reopen Termux and tap Test Termux Command again.";
+        noteTermuxUnavailable(
+            null,
+            "TERMUX_NOT_CONNECTED",
+            "Enable Termux Shell Tools, open Termux, run the setup command shown in the main window, fully close and reopen Termux, then test again."
+        );
+        return buildTermuxUnavailableToolResult(
+            null,
+            "TERMUX_NOT_CONNECTED",
+            "Enable Termux Shell Tools, open Termux, run the setup command shown in the main window, fully close and reopen Termux, then test again."
+        );
+    }
+
+    private String buildTermuxUnavailableToolResult(String command, String state, String recovery) {
+        String safeCommand = command == null ? "" : command.trim();
+        String safeRecovery = recovery == null ? "" : recovery.trim();
+        return "[ANDROID_TERMUX_SHELL]\n"
+            + "Termux status: unavailable\n"
+            + "Termux state: " + state + "\n"
+            + (safeCommand.isEmpty() ? "" : "Command: " + safeCommand + "\n")
+            + "Main settings window opened: true\n"
+            + (safeRecovery.isEmpty() ? "" : "Recovery: " + safeRecovery + "\n")
+            + "[/ANDROID_TERMUX_SHELL]\n"
+            + "If the user asked for a Linux or Termux command, say plainly that Termux is not connected in this Android session and mention that the main settings window is open so they can connect it.";
     }
 
     private String buildTermuxToolResult(String command, TermuxCommandBridge.Result result) {

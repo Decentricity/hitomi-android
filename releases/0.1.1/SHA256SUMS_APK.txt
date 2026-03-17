@@ -1,0 +1,1 @@
+198909f0778728a84028c1762e6292257ca17fa52ef5ccd23cbe016701cb7441  /data/data/com.termux/files/usr/var/lib/proot-distro/installed-rootfs/debian/root/projects/hitomi-android/releases/0.1.1/hitomi-v0.1.1-debug.apk

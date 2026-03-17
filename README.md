@@ -20,12 +20,23 @@ See `BUILDING.md` before running Gradle, especially if you are building either:
 
 ## Download APK (Current)
 
-Release `0.1.0`:
-- Direct APK download: https://raw.githubusercontent.com/Decentricity/hitomi-android/master/releases/0.1.0/hitomi-v0.1.0-debug.apk
-- `releases/0.1.0/hitomi-v0.1.0-debug.apk`
-- checksum: `releases/0.1.0/SHA256SUMS_APK.txt`
+Release `0.1.1`:
+- Direct APK download: https://raw.githubusercontent.com/Decentricity/hitomi-android/master/releases/0.1.1/hitomi-v0.1.1-debug.apk
+- `releases/0.1.1/hitomi-v0.1.1-debug.apk`
+- checksum: `releases/0.1.1/SHA256SUMS_APK.txt`
 
-## What 0.1.0 includes
+## What 0.1.1 includes
+
+- Green-on-black Terminal overlay window for visible Termux command/result transcripts
+- Automatic terminal summon when Hitomi uses Termux
+- Termux package visibility fix so installed Termux, open, enable, and test controls appear reliably
+- Termux-not-connected flow now opens the main settings window and tells the user how to reconnect
+- Signed-in welcome line now advertises browser, Termux, and Solana capabilities
+- Drag Hitomi to the bottom-center `X` target to close the floating overlay
+- Hidden-edge restore hit area and swipe restore polish
+- Hidden edge tab now re-anchors correctly on rotation
+- Mic permission flow fix from overlay to main settings window
+- Microphone/STT startup hardening and better failure recovery
 
 - Purple Solana wallet window with local wallet save flow
 - Read-only Solana wallet overview / refresh tools

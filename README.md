@@ -18,6 +18,16 @@ See `BUILDING.md` before running Gradle, especially if you are building either:
 - on Ubuntu/x86_64
 - inside Debian proot on Android/Termux
 
+Convenience scripts:
+- `scripts/build-release-linux.sh`
+  - run on a normal Linux/x86_64 machine with Android SDK + JDK installed
+  - builds a signed release AAB if `keystore.properties` is present
+  - copies the result into `releases/<version>/`
+- `scripts/build-release-termux-proot.sh`
+  - run inside the Debian proot clone on the phone
+  - applies the Termux-host `aapt2` override for this environment
+  - builds a signed release AAB and copies it into `releases/<version>/`
+
 ## Download APK (Current)
 
 Release `0.1.1`:
@@ -66,7 +76,8 @@ Release `0.1.1`:
 
 - This is an early prototype release.
 - I plan to publish through F-Droid later; for now, direct APK testing is the intended path.
-- App signing / release builds can be added after the auth + overlay UX stabilizes further.
+- Signed release AAB builds are supported when a local `keystore.properties` is present.
+- Keep signing material local to the build machine; do not commit `keystore.properties` or the keystore itself.
 
 ## Termux (T1/T1.5) setup notes
 

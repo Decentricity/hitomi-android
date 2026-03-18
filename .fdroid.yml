@@ -27,3 +27,4 @@ Builds:
     commit: v0.1.2
     gradle:
       - open
+    output: app/build/outputs/apk/open/release/app-open-release.apk

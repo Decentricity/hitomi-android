@@ -1,4 +1,5 @@
 Name: Open Hitomi
+AutoName: Hitomi
 Summary: Floating hedgehog assistant with local Ollama chat and optional xAI
 License: AGPL-3.0-or-later
 Categories:

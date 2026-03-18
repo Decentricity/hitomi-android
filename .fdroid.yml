@@ -1,4 +1,4 @@
-AutoName: Open Hitomi
+Name: Open Hitomi
 Summary: Floating hedgehog assistant with local Ollama chat and optional xAI
 License: AGPL-3.0-or-later
 Categories:
@@ -27,4 +27,4 @@ Builds:
     commit: v0.1.2
     gradle:
       - open
-    output: app/build/outputs/apk/open/release/app-open-release.apk
+    output: app/build/outputs/apk/open/release/*.apk

@@ -1,3 +1,5 @@
 <resources>
     <string name="app_name">Hitomi</string>
+    <string name="auth_title">Sign in to continue:</string>
+    <string name="auth_hint">Use the app authentication flow to continue.</string>
 </resources>

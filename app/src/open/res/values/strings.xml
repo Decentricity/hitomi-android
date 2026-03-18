@@ -1,3 +1,5 @@
 <resources>
     <string name="app_name">Open Hitomi</string>
+    <string name="auth_title">Enter your Grok API key here:</string>
+    <string name="auth_hint">Your Grok API key stays on this device.</string>
 </resources>

@@ -33,10 +33,10 @@ public class MainActivity extends AppCompatActivity {
     private TextView statusText;
     private TextView authStatusText;
     private TextView authTitleText;
-    private TextView loginHintText;
-    private SupabaseAuthManager authManager;
+    private TextView authHintText;
+    private HitomiAuthManager authManager;
     private TermuxCommandBridge termuxBridge;
-    private Button loginButton;
+    private Button authActionButton;
     private View apiKeyEntryRow;
     private EditText apiKeyInput;
     private Button apiKeySubmitButton;
@@ -60,14 +60,14 @@ public class MainActivity extends AppCompatActivity {
         if (getSupportActionBar() != null) getSupportActionBar().hide();
         setContentView(R.layout.activity_main);
 
-        authManager = new SupabaseAuthManager(this);
+        authManager = new HitomiAuthManager(this);
         forceShowMain = getIntent() != null && getIntent().getBooleanExtra(EXTRA_FORCE_SHOW_MAIN, false);
         termuxBridge = new TermuxCommandBridge(this);
         statusText = findViewById(R.id.statusText);
         authStatusText = findViewById(R.id.authStatusText);
         authTitleText = findViewById(R.id.authTitleText);
-        loginHintText = findViewById(R.id.loginHintText);
-        loginButton = findViewById(R.id.loginButton);
+        authHintText = findViewById(R.id.authHintText);
+        authActionButton = findViewById(R.id.authActionButton);
         apiKeyEntryRow = findViewById(R.id.apiKeyEntryRow);
         apiKeyInput = findViewById(R.id.apiKeyInput);
         apiKeySubmitButton = findViewById(R.id.apiKeySubmitButton);
@@ -88,7 +88,7 @@ public class MainActivity extends AppCompatActivity {
         handleAuthIntent(getIntent());
         maybeHandlePermissionIntent(getIntent());
 
-        loginButton.setOnClickListener(v -> openWebAuth());
+        authActionButton.setOnClickListener(v -> startAuthFlow());
         if (apiKeySubmitButton != null) {
             apiKeySubmitButton.setOnClickListener(v -> submitDirectApiKey());
         }
@@ -108,8 +108,13 @@ public class MainActivity extends AppCompatActivity {
                 return;
             }
             if (!authManager.isSignedIn()) {
-                statusText.setText("Status: sign in first");
-                authStatusText.setText("Auth: sign in required before chatting");
+                if (BuildConfig.IS_OPEN_VARIANT) {
+                    statusText.setText("Status: enter API key first");
+                    authStatusText.setText("Auth: Grok API key required before chatting");
+                } else {
+                    statusText.setText("Status: authentication required");
+                    authStatusText.setText("Auth: authentication required before chatting");
+                }
                 return;
             }
             Intent intent = new Intent(this, HedgehogOverlayService.class);
@@ -220,7 +225,7 @@ public class MainActivity extends AppCompatActivity {
         }
     }
 
-    private void openWebAuth() {
+    private void startAuthFlow() {
         if (BuildConfig.IS_OPEN_VARIANT) {
             submitDirectApiKey();
             return;
@@ -377,13 +382,13 @@ public class MainActivity extends AppCompatActivity {
     private void refreshControlVisibility() {
         boolean signedIn = authManager != null && authManager.isSignedIn();
         boolean overlayRunning = HedgehogOverlayService.isOverlayRunning();
-        if (loginButton != null) {
-            loginButton.setVisibility(BuildConfig.IS_OPEN_VARIANT || signedIn ? android.view.View.GONE : android.view.View.VISIBLE);
+        if (authActionButton != null) {
+            authActionButton.setVisibility(BuildConfig.IS_OPEN_VARIANT || signedIn ? android.view.View.GONE : android.view.View.VISIBLE);
         }
         if (apiKeyEntryRow != null) {
             apiKeyEntryRow.setVisibility(BuildConfig.IS_OPEN_VARIANT && !signedIn ? View.VISIBLE : View.GONE);
         }
-        if (loginHintText != null) loginHintText.setVisibility(signedIn ? android.view.View.GONE : android.view.View.VISIBLE);
+        if (authHintText != null) authHintText.setVisibility(signedIn ? android.view.View.GONE : android.view.View.VISIBLE);
         if (signOutButton != null) signOutButton.setVisibility(signedIn ? android.view.View.VISIBLE : android.view.View.GONE);
         if (startOverlayButton != null) startOverlayButton.setVisibility(overlayRunning ? android.view.View.GONE : android.view.View.VISIBLE);
         if (stopOverlayButton != null) stopOverlayButton.setVisibility(overlayRunning ? android.view.View.VISIBLE : android.view.View.GONE);
@@ -567,8 +572,8 @@ public class MainActivity extends AppCompatActivity {
     private void configureFlavorUi() {
         if (!BuildConfig.IS_OPEN_VARIANT) return;
         if (authTitleText != null) authTitleText.setText("Enter your Grok API key here:");
-        if (loginHintText != null) {
-            loginHintText.setText("Open Hitomi keeps your API key on this device and skips the hosted login flow.");
+        if (authHintText != null) {
+            authHintText.setText("Your Grok API key stays on this device.");
         }
         if (apiKeyInput != null) {
             String savedKey = authManager.getDirectApiKey();

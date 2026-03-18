@@ -20,14 +20,14 @@ public class HitomiCloudChatClient {
     private static final double TEMPERATURE = 0.4;
 
     private final Context appContext;
-    private final SupabaseAuthManager authManager;
+    private final HitomiAuthManager authManager;
     private final SolanaWalletClient solanaWalletClient;
     private final String soulTemplate;
     private final String toolsText;
 
     public HitomiCloudChatClient(Context context) {
         this.appContext = context.getApplicationContext();
-        this.authManager = new SupabaseAuthManager(appContext);
+        this.authManager = new HitomiAuthManager(appContext);
         this.solanaWalletClient = new SolanaWalletClient(appContext);
         this.soulTemplate = readRawText(appContext, R.raw.soul_md);
         this.toolsText = readRawText(appContext, R.raw.tools_md);
@@ -59,12 +59,12 @@ public class HitomiCloudChatClient {
             throw new IllegalStateException("Please sign in first.");
         }
 
-        HttpURLConnection conn = (HttpURLConnection) new URL(SupabaseAuthManager.XAI_CHAT_FUNCTION_URL).openConnection();
+        HttpURLConnection conn = (HttpURLConnection) new URL(HitomiAuthManager.CHAT_ENDPOINT_URL).openConnection();
         conn.setRequestMethod("POST");
         conn.setConnectTimeout(15000);
         conn.setReadTimeout(60000);
         conn.setRequestProperty("Content-Type", "application/json");
-        conn.setRequestProperty("apikey", SupabaseAuthManager.SUPABASE_ANON_KEY);
+        conn.setRequestProperty("apikey", HitomiAuthManager.BACKEND_PUBLIC_KEY);
         conn.setRequestProperty("Authorization", "Bearer " + accessToken);
         conn.setDoOutput(true);
         byte[] bytes = body.toString().getBytes(StandardCharsets.UTF_8);

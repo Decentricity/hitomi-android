@@ -387,7 +387,7 @@ public class HedgehogOverlayService extends Service {
         termuxCommandBridge = new TermuxCommandBridge(this);
         solanaWalletClient = new SolanaWalletClient(this);
         initSpeechRecognizer();
-        SupabaseAuthManager auth = new SupabaseAuthManager(this);
+        HitomiAuthManager auth = new HitomiAuthManager(this);
         if (auth.isSignedIn()) {
             String display = String.valueOf(auth.getDisplayName() == null ? "" : auth.getDisplayName()).trim();
             String helloName = display.isEmpty() ? "friend" : display;
@@ -1943,7 +1943,7 @@ public class HedgehogOverlayService extends Service {
             String reply;
             String userName = "friend";
             try {
-                SupabaseAuthManager auth = new SupabaseAuthManager(this);
+                HitomiAuthManager auth = new HitomiAuthManager(this);
                 String resolved = auth.getDisplayName();
                 if (resolved != null && !resolved.trim().isEmpty()) userName = resolved.trim();
                 chatHistory.put(new JSONObject().put("role", "user").put("content", msg));

@@ -62,7 +62,7 @@
                 android:id="@+id/authTitleText"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:text="Sign in or sign up to Agent1c.ai:"
+                android:text="@string/auth_title"
                 android:textColor="#111111"
                 android:textSize="20sp"
                 android:textStyle="bold" />
@@ -79,7 +79,7 @@
                 android:textStyle="bold" />
 
             <Button
-                android:id="@+id/loginButton"
+                android:id="@+id/authActionButton"
                 android:layout_width="match_parent"
                 android:layout_height="40dp"
                 android:layout_marginTop="10dp"
@@ -89,11 +89,11 @@
                 android:textColor="#111111" />
 
             <TextView
-                android:id="@+id/loginHintText"
+                android:id="@+id/authHintText"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:layout_marginTop="8dp"
-                android:text="Choose Google, X, or Magic Link in the Agent1c.ai login window."
+                android:text="@string/auth_hint"
                 android:textColor="#444444"
                 android:textSize="12sp" />
 

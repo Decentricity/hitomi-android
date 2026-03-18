@@ -1,0 +1,12 @@
+Open Hitomi is a floating Android hedgehog assistant built around a local overlay interface.
+
+Current features include:
+- a movable floating assistant overlay
+- an in-app browser window for visible browsing and readback
+- optional Termux integration for local shell-style commands
+- local Solana wallet display tools
+- bring-your-own-key chat setup directly on the device
+
+The current open flavor accepts a user-supplied Grok API key stored locally on-device.
+
+The long-term direction is to keep Open Hitomi open, configurable, and suitable for additional compatible endpoints, including local model routes.

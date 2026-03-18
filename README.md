@@ -1,21 +1,18 @@
-# Agent1c Android (Hitomi Overlay)
+# Open Hitomi
 
 ![Hitomi Android Screenshot](docs/hitomi-android-screenshot-latest.png)
 
-Native Android floating Hitomi ("talking hedgehog") companion app for the Agent1c ecosystem.
+Open Hitomi is an Android floating hedgehog assistant with a local overlay UI, browser tools, optional Termux bridge support, and bring-your-own-key chat.
 
-This repo now ships two Android variants from one shared codebase:
-- `Hitomi`
-  - package ID: `ai.agent1c.hitomi`
-  - hosted auth + hosted chat path
+License:
+- `AGPL-3.0-or-later`
+- Copyright `Decentricity`
+
+The F-Droid-facing app variant in this repo is:
 - `Open Hitomi`
   - package ID: `ai.agent1c.hitomi.open`
-  - local Grok API key entry on-device
-  - intended BYOK / F-Droid-friendly direction
-
-Related projects:
-- `agent1c.ai` (cloud-hosted Agent1c OS)
-- `agent1c.me` (local-first / BYOK Agent1c OS)
+  - local API key entry on-device
+  - intended long-term direction for BYOK and additional compatible local/remote model endpoints
 
 ## Building
 
@@ -36,14 +33,14 @@ Convenience scripts:
   - builds a signed release AAB and copies it into `releases/<version>/`
 
 For local debug APKs:
-- `./gradlew assembleHostedDebug`
 - `./gradlew assembleOpenDebug`
+- `./gradlew assembleOpenRelease`
 
 Typical output paths:
-- hosted debug APK:
-  - `app/build/outputs/apk/hosted/debug/app-hosted-debug.apk`
 - open debug APK:
   - `app/build/outputs/apk/open/debug/app-open-debug.apk`
+- open release APK:
+  - `app/build/outputs/apk/open/release/`
 
 ## What The App Includes
 
@@ -51,8 +48,9 @@ Typical output paths:
 - Floating Hitomi hedgehog overlay as the main companion surface
 - Signed-in welcome line that advertises browser, Termux, and Solana capabilities
 - Clippy-style chat bubble with tail
-- Hosted variant uses Agent1c.ai/Supabase-backed auth + chat
-- Open variant accepts a Grok API key locally and skips hosted web login
+- Local API key entry on-device for the open flavor
+- Current open flavor targets bring-your-own-key Grok chat
+- The architecture is intended to expand toward additional compatible endpoints, including local model routes in future work
 
 - Long-press quick actions for settings, mic, and hide-to-edge
 - Native Android STT always-listening mode
@@ -87,6 +85,7 @@ Typical output paths:
 - This is an early prototype release.
 - Signed release AAB builds are supported when a local `keystore.properties` is present.
 - Keep signing material local to the build machine; do not commit `keystore.properties` or the keystore itself.
+- Public app-store metadata for Open Hitomi should live in upstream Fastlane files under `app/src/open/fastlane/`.
 
 ## Termux (T1/T1.5) setup notes
 

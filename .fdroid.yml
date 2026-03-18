@@ -1,0 +1,28 @@
+AutoName: Open Hitomi
+Summary: Floating hedgehog assistant with BYOK chat and local tools
+License: AGPL-3.0-or-later
+Categories:
+  - Internet
+  - System
+Description: |-
+  Open Hitomi is a floating Android hedgehog assistant built around a local overlay UI.
+
+  The current open flavor includes:
+  - on-device API key entry
+  - floating assistant overlay
+  - browser tools
+  - optional Termux bridge support
+  - local Solana wallet display tools
+
+  Open Hitomi is intended to stay open, configurable, and ready for additional compatible local or remote model endpoints over time.
+CurrentVersion: 0.1.1
+CurrentVersionCode: 5
+UpdateCheckMode: Tags ^v[0-9.]+$
+UpdateCheckData: app/build.gradle|versionCode\s(\d+)||v(.+)
+AutoUpdateMode: Version v%v
+Builds:
+  - versionName: 0.1.1
+    versionCode: 5
+    commit: dbb3198
+    gradle:
+      - open

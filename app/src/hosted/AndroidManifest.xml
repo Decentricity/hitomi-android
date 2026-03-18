@@ -1,0 +1,27 @@
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <application>
+        <activity android:name=".MainActivity">
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data
+                    android:scheme="hitomicompanion"
+                    android:host="auth"
+                    android:pathPrefix="/callback" />
+                <data
+                    android:scheme="hitomicompanion"
+                    android:host="auth"
+                    android:pathPrefix="/oauth" />
+                <data
+                    android:scheme="agent1cai"
+                    android:host="auth"
+                    android:pathPrefix="/callback" />
+                <data
+                    android:scheme="agent1cai"
+                    android:host="auth"
+                    android:pathPrefix="/oauth" />
+            </intent-filter>
+        </activity>
+    </application>
+</manifest>

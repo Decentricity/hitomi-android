@@ -1,5 +1,5 @@
 <resources>
     <string name="app_name">Open Hitomi</string>
-    <string name="auth_title">Enter your Grok API key here:</string>
-    <string name="auth_hint">Your Grok API key stays on this device.</string>
+    <string name="auth_title">Enter an Ollama endpoint or xAI API key:</string>
+    <string name="auth_hint">Use http://127.0.0.1:11434 for local Ollama, or paste an xAI API key. This stays on this device.</string>
 </resources>

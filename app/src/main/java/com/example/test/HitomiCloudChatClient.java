@@ -18,6 +18,8 @@ public class HitomiCloudChatClient {
     private static final String DIRECT_MODEL = "grok-4";
     private static final String DIRECT_XAI_CHAT_URL = "https://api.x.ai/v1/chat/completions";
     private static final double TEMPERATURE = 0.4;
+    private static final String OLLAMA_TAGS_PATH = "/api/tags";
+    private static final String OLLAMA_CHAT_PATH = "/api/chat";
 
     private final Context appContext;
     private final HitomiAuthManager authManager;
@@ -47,9 +49,13 @@ public class HitomiCloudChatClient {
         body.put("messages", payloadMessages);
 
         if (BuildConfig.IS_OPEN_VARIANT) {
+            String endpoint = authManager.getLocalEndpoint();
+            if (!endpoint.isEmpty()) {
+                return sendDirectOllama(payloadMessages, endpoint);
+            }
             String apiKey = authManager.getDirectApiKey();
             if (apiKey.isEmpty()) {
-                throw new IllegalStateException("Please enter a Grok API key first.");
+                throw new IllegalStateException("Please enter an Ollama endpoint or xAI API key first.");
             }
             return sendDirectXai(body, apiKey, userName);
         }
@@ -136,6 +142,83 @@ public class HitomiCloudChatClient {
         String content = msg != null ? msg.optString("content", "") : "";
         if (content == null || content.trim().isEmpty()) throw new IllegalStateException("Grok returned no message.");
         return content.trim();
+    }
+
+    private String sendDirectOllama(JSONArray payloadMessages, String endpoint) throws Exception {
+        String model = fetchOllamaModel(endpoint);
+        JSONObject body = new JSONObject();
+        body.put("model", model);
+        body.put("stream", false);
+        body.put("messages", payloadMessages);
+        body.put("options", new JSONObject().put("temperature", TEMPERATURE));
+
+        HttpURLConnection conn = (HttpURLConnection) new URL(buildOllamaUrl(endpoint)).openConnection();
+        conn.setRequestMethod("POST");
+        conn.setConnectTimeout(15000);
+        conn.setReadTimeout(60000);
+        conn.setRequestProperty("Content-Type", "application/json");
+        conn.setDoOutput(true);
+        byte[] bytes = body.toString().getBytes(StandardCharsets.UTF_8);
+        conn.setFixedLengthStreamingMode(bytes.length);
+        try (OutputStream os = conn.getOutputStream()) {
+            os.write(bytes);
+        }
+
+        int code = conn.getResponseCode();
+        String respText = readAll(code >= 200 && code < 300 ? conn.getInputStream() : conn.getErrorStream());
+        JSONObject resp = respText.isEmpty() ? new JSONObject() : new JSONObject(respText);
+        if (code < 200 || code >= 300) {
+            String errMsg = resp.optString("error", "");
+            if (errMsg.isEmpty()) errMsg = resp.optString("message", "");
+            if (errMsg.isEmpty()) errMsg = "unknown error";
+            throw new IllegalStateException("Ollama call failed (" + code + "): " + errMsg);
+        }
+        JSONObject msg = resp.optJSONObject("message");
+        String content = msg != null ? msg.optString("content", "") : "";
+        if (content == null || content.trim().isEmpty()) {
+            throw new IllegalStateException("Ollama returned no message.");
+        }
+        return content.trim();
+    }
+
+    private String fetchOllamaModel(String endpoint) throws Exception {
+        HttpURLConnection conn = (HttpURLConnection) new URL(buildOllamaTagsUrl(endpoint)).openConnection();
+        conn.setRequestMethod("GET");
+        conn.setConnectTimeout(10000);
+        conn.setReadTimeout(30000);
+        int code = conn.getResponseCode();
+        String respText = readAll(code >= 200 && code < 300 ? conn.getInputStream() : conn.getErrorStream());
+        JSONObject resp = respText.isEmpty() ? new JSONObject() : new JSONObject(respText);
+        if (code < 200 || code >= 300) {
+            String errMsg = resp.optString("error", "");
+            if (errMsg.isEmpty()) errMsg = resp.optString("message", "");
+            throw new IllegalStateException("Could not query Ollama models (" + code + ")" + (errMsg.isEmpty() ? "" : ": " + errMsg));
+        }
+        JSONArray models = resp.optJSONArray("models");
+        if (models == null || models.length() == 0) {
+            throw new IllegalStateException("No Ollama models found. Pull one first, for example `ollama pull qwen2.5:3b`.");
+        }
+        JSONObject first = models.optJSONObject(0);
+        String model = first == null ? "" : first.optString("model", "").trim();
+        if (model.isEmpty()) {
+            model = first == null ? "" : first.optString("name", "").trim();
+        }
+        if (model.isEmpty()) {
+            throw new IllegalStateException("Ollama returned models, but none had a usable name.");
+        }
+        return model;
+    }
+
+    private static String buildOllamaUrl(String endpoint) {
+        if (endpoint.endsWith("/api/chat")) return endpoint;
+        return endpoint + OLLAMA_CHAT_PATH;
+    }
+
+    private static String buildOllamaTagsUrl(String endpoint) {
+        if (endpoint.endsWith("/api/chat")) {
+            return endpoint.substring(0, endpoint.length() - "/api/chat".length()) + OLLAMA_TAGS_PATH;
+        }
+        return endpoint + OLLAMA_TAGS_PATH;
     }
 
     private String buildSystemPrompt(String userName) {

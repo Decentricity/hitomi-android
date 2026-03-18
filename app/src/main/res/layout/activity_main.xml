@@ -113,7 +113,7 @@
                     android:layout_weight="1"
                     android:autofillHints=""
                     android:background="#f4f4f4"
-                    android:hint="xai-..."
+                    android:hint="http://127.0.0.1:11434 or xai-..."
                     android:inputType="textVisiblePassword"
                     android:paddingLeft="10dp"
                     android:paddingRight="10dp"
@@ -131,6 +131,16 @@
                     android:textAllCaps="false"
                     android:textColor="#111111" />
             </LinearLayout>
+
+            <Button
+                android:id="@+id/openSetupGuideButton"
+                android:layout_width="match_parent"
+                android:layout_height="40dp"
+                android:layout_marginTop="8dp"
+                android:background="@drawable/beos_button_bg"
+                android:text="Open Setup Guide"
+                android:textAllCaps="true"
+                android:textColor="#111111" />
 
             <Button
                 android:id="@+id/signOutButton"

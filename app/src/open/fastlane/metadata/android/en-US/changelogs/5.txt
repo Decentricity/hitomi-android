@@ -2,6 +2,7 @@ First Open Hitomi flavor release.
 
 Highlights:
 - separate Open Hitomi app ID
-- local API key entry flow on-device
+- local Ollama endpoint support on-device
+- optional xAI API key entry flow on-device
 - floating hedgehog overlay
 - browser, Termux, and Solana tools

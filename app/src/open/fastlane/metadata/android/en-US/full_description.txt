@@ -5,8 +5,11 @@ Current features include:
 - an in-app browser window for visible browsing and readback
 - optional Termux integration for local shell-style commands
 - local Solana wallet display tools
-- bring-your-own-key chat setup directly on the device
+- local Ollama-compatible endpoint support
+- optional xAI bring-your-own-key chat setup directly on the device
 
-The current open flavor accepts a user-supplied Grok API key stored locally on-device.
+For local setups, paste an Ollama endpoint such as `http://127.0.0.1:11434` into the app. Open Hitomi will query the local server for installed models and use the first available one.
 
-The long-term direction is to keep Open Hitomi open, configurable, and suitable for additional compatible endpoints, including local model routes.
+If you prefer a hosted provider, you can also paste an xAI API key into the same field. Entered connection details stay stored locally on-device.
+
+Open Hitomi is intended to stay open, configurable, and suitable for local and self-hosted model routes first, with optional external providers second.

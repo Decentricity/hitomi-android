@@ -40,6 +40,7 @@ public class MainActivity extends AppCompatActivity {
     private View apiKeyEntryRow;
     private EditText apiKeyInput;
     private Button apiKeySubmitButton;
+    private Button openSetupGuideButton;
     private Button signOutButton;
     private Button startOverlayButton;
     private Button stopOverlayButton;
@@ -71,6 +72,7 @@ public class MainActivity extends AppCompatActivity {
         apiKeyEntryRow = findViewById(R.id.apiKeyEntryRow);
         apiKeyInput = findViewById(R.id.apiKeyInput);
         apiKeySubmitButton = findViewById(R.id.apiKeySubmitButton);
+        openSetupGuideButton = findViewById(R.id.openSetupGuideButton);
         signOutButton = findViewById(R.id.signOutButton);
         Button overlayPermissionButton = findViewById(R.id.overlayPermissionButton);
         startOverlayButton = findViewById(R.id.startOverlayButton);
@@ -92,6 +94,9 @@ public class MainActivity extends AppCompatActivity {
         if (apiKeySubmitButton != null) {
             apiKeySubmitButton.setOnClickListener(v -> submitDirectApiKey());
         }
+        if (openSetupGuideButton != null) {
+            openSetupGuideButton.setOnClickListener(v -> openSetupGuide());
+        }
         signOutButton.setOnClickListener(v -> {
             authManager.signOut();
             if (apiKeyInput != null) apiKeyInput.setText("");
@@ -109,8 +114,8 @@ public class MainActivity extends AppCompatActivity {
             }
             if (!authManager.isSignedIn()) {
                 if (BuildConfig.IS_OPEN_VARIANT) {
-                    statusText.setText("Status: enter API key first");
-                    authStatusText.setText("Auth: Grok API key required before chatting");
+                statusText.setText("Status: enter API key first");
+                    authStatusText.setText("Auth: connection required before chatting");
                 } else {
                     statusText.setText("Status: authentication required");
                     authStatusText.setText("Auth: authentication required before chatting");
@@ -355,11 +360,13 @@ public class MainActivity extends AppCompatActivity {
     private void refreshAuthStatus() {
         if (BuildConfig.IS_OPEN_VARIANT) {
             if (!authManager.isSignedIn()) {
-                authStatusText.setText("Auth: Grok API key required");
+                authStatusText.setText("Auth: enter an Ollama endpoint or xAI API key");
                 refreshControlVisibility();
                 return;
             }
-            authStatusText.setText("Auth: Grok API key saved locally");
+            authStatusText.setText(authManager.isUsingLocalEndpoint()
+                ? "Auth: local endpoint saved"
+                : "Auth: xAI API key saved locally");
             refreshControlVisibility();
             return;
         }
@@ -571,29 +578,38 @@ public class MainActivity extends AppCompatActivity {
 
     private void configureFlavorUi() {
         if (!BuildConfig.IS_OPEN_VARIANT) return;
-        if (authTitleText != null) authTitleText.setText("Enter your Grok API key here:");
+        if (authTitleText != null) authTitleText.setText("Enter an Ollama endpoint or xAI API key:");
         if (authHintText != null) {
-            authHintText.setText("Your Grok API key stays on this device.");
+            authHintText.setText("Use http://127.0.0.1:11434 for local Ollama, or paste an xAI API key. This stays on this device.");
         }
         if (apiKeyInput != null) {
-            String savedKey = authManager.getDirectApiKey();
-            if (!savedKey.isEmpty()) apiKeyInput.setText(savedKey);
+            String savedValue = authManager.isUsingLocalEndpoint() ? authManager.getLocalEndpoint() : authManager.getDirectApiKey();
+            if (!savedValue.isEmpty()) apiKeyInput.setText(savedValue);
         }
     }
 
     private void submitDirectApiKey() {
         if (!BuildConfig.IS_OPEN_VARIANT) return;
-        String apiKey = apiKeyInput == null ? "" : String.valueOf(apiKeyInput.getText()).trim();
-        if (apiKey.isEmpty()) {
-            authStatusText.setText("Auth: enter a Grok API key first");
-            Toast.makeText(this, "Enter a Grok API key.", Toast.LENGTH_SHORT).show();
+        String input = apiKeyInput == null ? "" : String.valueOf(apiKeyInput.getText()).trim();
+        if (input.isEmpty()) {
+            authStatusText.setText("Auth: enter an Ollama endpoint or xAI API key");
+            Toast.makeText(this, "Enter an Ollama endpoint or xAI API key.", Toast.LENGTH_SHORT).show();
             return;
         }
-        authManager.signInWithDirectApiKey(apiKey);
+        authManager.signInWithConnectionInput(input);
         refreshAuthStatus();
-        statusText.setText("Status: API key saved");
+        boolean endpoint = HitomiAuthManager.looksLikeEndpoint(input);
+        statusText.setText(endpoint ? "Status: endpoint saved" : "Status: API key saved");
         refreshControlVisibility();
-        Toast.makeText(this, "Grok API key saved locally.", Toast.LENGTH_SHORT).show();
+        Toast.makeText(this, endpoint ? "Endpoint saved locally." : "xAI API key saved locally.", Toast.LENGTH_SHORT).show();
         maybeAutoLaunchOverlayAndHideMain();
+    }
+
+    private void openSetupGuide() {
+        try {
+            startActivity(new Intent(Intent.ACTION_VIEW, Uri.parse("https://github.com/Decentricity/hitomi-android/blob/master/OPEN_HITOMI.md")));
+        } catch (Exception e) {
+            statusText.setText("Status: couldn't open setup guide (" + safeMessage(e) + ")");
+        }
     }
 }

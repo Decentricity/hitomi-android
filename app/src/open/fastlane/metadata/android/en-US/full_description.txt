@@ -1,15 +1,13 @@
-Open Hitomi is a floating Android hedgehog assistant built around a local overlay interface.
-
-Current features include:
-- a movable floating assistant overlay
-- an in-app browser window for visible browsing and readback
-- optional Termux integration for local shell-style commands
-- local Solana wallet display tools
-- local Ollama-compatible endpoint support
-- optional xAI bring-your-own-key chat setup directly on the device
-
-For local setups, paste an Ollama endpoint such as `http://127.0.0.1:11434` into the app. Open Hitomi will query the local server for installed models and use the first available one.
-
-If you prefer a hosted provider, you can also paste an xAI API key into the same field. Entered connection details stay stored locally on-device.
-
-Open Hitomi is intended to stay open, configurable, and suitable for local and self-hosted model routes first, with optional external providers second.
+<p>Open Hitomi is a floating Android hedgehog assistant built around a local overlay interface.</p>
+<p>Current features include:</p>
+<ul>
+<li>a movable floating assistant overlay</li>
+<li>an in-app browser window for visible browsing and readback</li>
+<li>optional Termux integration for local shell-style commands</li>
+<li>local Solana wallet display tools</li>
+<li>local Ollama-compatible endpoint support</li>
+<li>optional xAI bring-your-own-key chat setup directly on the device</li>
+</ul>
+<p>For local setups, paste an Ollama endpoint such as http://127.0.0.1:11434 into the app. Open Hitomi will query the local server for installed models and use the first available one.</p>
+<p>If you prefer a hosted provider, you can also paste an xAI API key into the same field. Entered connection details stay stored locally on-device.</p>
+<p>Open Hitomi is intended to stay open, configurable, and suitable for local and self-hosted model routes first, with optional external providers second.</p>

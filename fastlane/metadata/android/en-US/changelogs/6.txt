@@ -1,0 +1,3 @@
+- local Ollama endpoint support on-device
+- optional xAI API key entry in the same connection field
+- in-app Open Hitomi setup guide

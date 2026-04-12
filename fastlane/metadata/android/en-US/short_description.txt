@@ -1,0 +1,1 @@
+Floating hedgehog assistant with local Ollama chat, optional xAI, browser tools, and optional Termux bridge

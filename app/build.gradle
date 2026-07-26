@@ -10,7 +10,7 @@ if (keystorePropertiesFile.exists()) {
 
 android {
     namespace 'ai.agent1c.hitomi'
-    compileSdk 34
+    compileSdk 36
 
     flavorDimensions "edition"
 
@@ -21,7 +21,7 @@ android {
     defaultConfig {
         applicationId "ai.agent1c.hitomi"
         minSdk 21
-        targetSdk 34
+        targetSdk 36
         versionCode 6
         versionName "0.1.2"
     }

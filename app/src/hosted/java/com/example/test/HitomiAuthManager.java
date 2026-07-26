@@ -216,6 +216,22 @@ public class HitomiAuthManager {
         return "solana".equalsIgnoreCase(getWalletChain()) && !getWalletAddress().trim().isEmpty();
     }
 
+    public String getLocalEndpoint() {
+        return "";
+    }
+
+    public boolean isUsingLocalEndpoint() {
+        return false;
+    }
+
+    public void signInWithConnectionInput(String input) {
+        // Hosted builds always use Supabase auth; Open Hitomi handles BYOK/local endpoint input.
+    }
+
+    public static boolean looksLikeEndpoint(String value) {
+        return false;
+    }
+
     public synchronized String ensureValidAccessToken() throws Exception {
         String token = getAccessTokenRaw();
         if (token.isEmpty()) return "";
